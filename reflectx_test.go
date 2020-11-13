@@ -39,8 +39,8 @@ func TestFieldCanSet(t *testing.T) {
 
 type Buffer struct {
 	*bytes.Buffer
-	X int
-	Y int
+	Size  int
+	Value reflect.Value
 }
 
 func TestStructOf(t *testing.T) {
