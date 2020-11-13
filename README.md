@@ -3,6 +3,10 @@ Golang reflect package hack tools
 
 ***
 
+[![Go1.14](https://github.com/goplusjs/reflectx/workflows/Go1.14/badge.svg)](https://github.com/goplusjs/reflectx/actions?query=workflow%3AGo1.14)
+[![Go1.15](https://github.com/goplusjs/reflectx/workflows/Go1.15/badge.svg)](https://github.com/goplusjs/reflectx/actions?query=workflow%3AGo1.15)
+
+
 **reflectx.CanSet**
 ```
 type Point struct {
