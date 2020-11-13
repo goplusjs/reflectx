@@ -8,7 +8,7 @@ on:
 
 jobs:
 
-  test_go1.15:
+  go115:
     name: Test Go1.15
     runs-on: macos-10.15
     steps:
@@ -47,7 +47,7 @@ jobs:
     - name: GopherJS Test
       run: gopherjs test -v
 
-  test_go1.14:
+  go114:
     name: Test Go1.15
     runs-on: macos-10.15
     steps:
