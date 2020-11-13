@@ -17,9 +17,6 @@ func TestFieldCanSet(t *testing.T) {
 	x := &Point{10, 20}
 	v := reflect.ValueOf(x).Elem()
 
-	v2 := reflect.ValueOf(Point{10, 20})
-	t.Log(reflectx.CanSet(v2).CanSet())
-
 	sf := v.Field(0)
 	if sf.CanSet() {
 		t.Fatal("x unexport cannot set")
@@ -83,5 +80,4 @@ func TestStructOfX(t *testing.T) {
 			t.Errorf("error field %v", dst.Field(i))
 		}
 	}
-	t.Log(dst)
 }
