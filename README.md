@@ -1,8 +1,6 @@
 # reflectx
 Golang reflect package hack tools
 
-***
-
 [![Go1.14](https://github.com/goplusjs/reflectx/workflows/Go1.14/badge.svg)](https://github.com/goplusjs/reflectx/actions?query=workflow%3AGo1.14)
 [![Go1.15](https://github.com/goplusjs/reflectx/workflows/Go1.15/badge.svg)](https://github.com/goplusjs/reflectx/actions?query=workflow%3AGo1.15)
 
@@ -30,5 +28,20 @@ fmt.Println(x.x)         // output: 102
 
 **reflectx.StructOf**
 ```
-support more embedded field
+type Buffer struct {
+	*bytes.Buffer
+	X int
+	Y int
+}
+
+typ := reflect.TypeOf((*Buffer)(nil)).Elem()
+var fs []reflect.StructField
+for i := 0; i < typ.NumField(); i++ {
+	fs = append(fs, typ.Field(i))
+}
+
+// reflect.StructOf(fs) // panic reflect: embedded type with methods not implemented if there is more than one field
+
+reflectx.StructOf(fs)
+
 ```

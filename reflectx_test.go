@@ -37,11 +37,10 @@ func TestFieldCanSet(t *testing.T) {
 	}
 }
 
-type buffer struct {
+type Buffer struct {
 	*bytes.Buffer
-	f1 int
-	f2 string
-	reflect.Value
+	size  int
+	value reflect.Value
 	*bytes.Reader
 }
 
@@ -54,7 +53,7 @@ func TestStructOf(t *testing.T) {
 			t.Log("reflect.StructOf panic", v)
 		}
 	}()
-	typ := reflect.TypeOf((*buffer)(nil)).Elem()
+	typ := reflect.TypeOf((*Buffer)(nil)).Elem()
 	var fs []reflect.StructField
 	for i := 0; i < typ.NumField(); i++ {
 		fs = append(fs, typ.Field(i))
@@ -69,7 +68,7 @@ func TestStructOfX(t *testing.T) {
 			t.Fatalf("reflectx.StructOf %v", v)
 		}
 	}()
-	typ := reflect.TypeOf((*buffer)(nil)).Elem()
+	typ := reflect.TypeOf((*Buffer)(nil)).Elem()
 	var fs []reflect.StructField
 	for i := 0; i < typ.NumField(); i++ {
 		fs = append(fs, typ.Field(i))
@@ -80,4 +79,9 @@ func TestStructOfX(t *testing.T) {
 			t.Errorf("error field %v", dst.Field(i))
 		}
 	}
+
+	v := reflect.New(dst)
+	v.Elem().Field(0).Set(reflect.ValueOf(bytes.NewBufferString("hello")))
+	reflectx.CanSet(v.Elem().Field(1)).SetInt(100)
+	t.Log(v.Interface())
 }
