@@ -39,8 +39,9 @@ func TestFieldCanSet(t *testing.T) {
 
 type Buffer struct {
 	*bytes.Buffer
-	Size  int
-	Value reflect.Value
+	size  int
+	value reflect.Value
+	*bytes.Reader
 }
 
 func TestStructOf(t *testing.T) {
@@ -78,4 +79,9 @@ func TestStructOfX(t *testing.T) {
 			t.Errorf("error field %v", dst.Field(i))
 		}
 	}
+
+	v := reflect.New(dst)
+	v.Elem().Field(0).Set(reflect.ValueOf(bytes.NewBufferString("hello")))
+	reflectx.CanSet(v.Elem().Field(1)).SetInt(100)
+	t.Log(v.Interface())
 }
