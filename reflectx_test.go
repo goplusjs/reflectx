@@ -1,6 +1,7 @@
 package reflectx_test
 
 import (
+	"bytes"
 	"reflect"
 	"testing"
 
@@ -15,6 +16,10 @@ type Point struct {
 func TestFieldCanSet(t *testing.T) {
 	x := &Point{10, 20}
 	v := reflect.ValueOf(x).Elem()
+
+	v2 := reflect.ValueOf(Point{10, 20})
+	t.Log(reflectx.CanSet(v2).CanSet())
+
 	sf := v.Field(0)
 	if sf.CanSet() {
 		t.Fatal("x unexport cannot set")
@@ -33,4 +38,50 @@ func TestFieldCanSet(t *testing.T) {
 	if x.x != 202 {
 		t.Fatalf("x value %v", x.x)
 	}
+}
+
+type buffer struct {
+	*bytes.Buffer
+	f1 int
+	f2 string
+	reflect.Value
+	*bytes.Reader
+}
+
+func TestStructOf(t *testing.T) {
+	defer func() {
+		v := recover()
+		if v == nil {
+			t.Failed()
+		} else {
+			t.Log("reflect.StructOf panic", v)
+		}
+	}()
+	typ := reflect.TypeOf((*buffer)(nil)).Elem()
+	var fs []reflect.StructField
+	for i := 0; i < typ.NumField(); i++ {
+		fs = append(fs, typ.Field(i))
+	}
+	reflect.StructOf(fs)
+}
+
+func TestStructOfX(t *testing.T) {
+	defer func() {
+		v := recover()
+		if v != nil {
+			t.Fatalf("reflectx.StructOf %v", v)
+		}
+	}()
+	typ := reflect.TypeOf((*buffer)(nil)).Elem()
+	var fs []reflect.StructField
+	for i := 0; i < typ.NumField(); i++ {
+		fs = append(fs, typ.Field(i))
+	}
+	dst := reflectx.StructOf(fs)
+	for i := 0; i < dst.NumField(); i++ {
+		if dst.Field(i).Anonymous != fs[i].Anonymous {
+			t.Errorf("error field %v", dst.Field(i))
+		}
+	}
+	t.Log(dst)
 }

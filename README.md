@@ -23,3 +23,8 @@ fmt.Println(sf.CanSet()) // output: true
 sf.SetInt(102)           // x.x = 102
 fmt.Println(x.x)         // output: 102
 ```
+
+**reflectx.StructOf**
+```
+support more embedded field
+```
