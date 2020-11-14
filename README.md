@@ -46,7 +46,8 @@ for i := 0; i < typ.NumField(); i++ {
 	fs = append(fs, typ.Field(i))
 }
 
-// reflect.StructOf(fs) // panic reflect: embedded type with methods not implemented if there is more than one field
+// reflect.StructOf(fs) 
+// panic reflect: embedded type with methods not implemented if there is more than one field
 
 reflectx.StructOf(fs)
 
