@@ -21,6 +21,34 @@ import (
 	"unsafe"
 )
 
+func Field(s reflect.Value, i int) reflect.Value {
+	v := s.Field(i)
+	canSet(&v)
+	return v
+}
+
+func FieldByIndex(s reflect.Value, index []int) reflect.Value {
+	v := s.FieldByIndex(index)
+	canSet(&v)
+	return v
+}
+
+func FieldByName(s reflect.Value, name string) reflect.Value {
+	v := s.FieldByName(name)
+	canSet(&v)
+	return v
+}
+
+func FieldByNameFunc(s reflect.Value, match func(name string) bool) reflect.Value {
+	v := s.FieldByNameFunc(match)
+	canSet(&v)
+	return v
+}
+
+func canSet(v *reflect.Value) {
+	(*Value)(unsafe.Pointer(v)).flag &= ^flagRO
+}
+
 func CanSet(v reflect.Value) reflect.Value {
 	if !v.CanSet() {
 		(*Value)(unsafe.Pointer(&v)).flag &= ^flagRO

@@ -37,6 +37,34 @@ func TestFieldCanSet(t *testing.T) {
 	}
 }
 
+type MyPoint struct {
+	pt1 Point
+	pt2 *Point
+}
+
+func TestField(t *testing.T) {
+	x := &MyPoint{Point{1, 2}, &Point{3, 4}}
+	v := reflect.ValueOf(x).Elem()
+	reflectx.Field(v, 0).Set(reflect.ValueOf(Point{10, 20}))
+	if x.pt1.x != 10 || x.pt1.y != 20 {
+		t.Fatalf("pt1 %v", x.pt1)
+	}
+	reflectx.FieldByName(v, "pt2").Set(reflect.ValueOf(&Point{30, 40}))
+	if x.pt2.x != 30 || x.pt2.y != 40 {
+		t.Fatalf("pt2 %v", x.pt2)
+	}
+	reflectx.FieldByNameFunc(v, func(name string) bool {
+		return name == "pt2"
+	}).Set(reflect.ValueOf(&Point{50, 60}))
+	if x.pt2.x != 50 || x.pt2.y != 60 {
+		t.Fatalf("pt2 %v", x.pt2)
+	}
+	reflectx.FieldByIndex(v, []int{0, 1}).SetInt(100)
+	if x.pt1.y != 100 {
+		t.Fatalf("pt1.y %v", x.pt1)
+	}
+}
+
 type Buffer struct {
 	*bytes.Buffer
 	size  int

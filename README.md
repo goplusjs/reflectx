@@ -5,7 +5,11 @@ Golang reflect package hack tools
 [![Go1.15](https://github.com/goplusjs/reflectx/workflows/Go1.15/badge.svg)](https://github.com/goplusjs/reflectx/actions?query=workflow%3AGo1.15)
 
 
-**reflectx.CanSet**
+* reflectx.CanSet
+* reflectx.Field
+* reflectx.FieldByIndex
+* reflectx.FieldByName
+* reflectx.FieldByNameFunc
 ```
 type Point struct {
     x int
@@ -24,6 +28,8 @@ fmt.Println(sf.CanSet()) // output: true
 
 sf.SetInt(102)           // x.x = 102
 fmt.Println(x.x)         // output: 102
+
+reflectx.Field(x,1).SetInt(100) // x.y = 100
 ```
 
 **reflectx.StructOf**
