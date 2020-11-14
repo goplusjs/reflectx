@@ -32,7 +32,7 @@ fmt.Println(x.x)         // output: 102
 reflectx.Field(x,1).SetInt(100) // x.y = 100
 ```
 
-**reflectx.StructOf**
+* reflectx.StructOf
 ```
 type Buffer struct {
 	*bytes.Buffer
