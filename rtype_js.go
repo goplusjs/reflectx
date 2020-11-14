@@ -5,7 +5,7 @@ package reflectx
 import (
 	"unsafe"
 
-	"github.com/gopherjs/gopherjs/js"
+	"github.com/goplusjs/gopherjs/js"
 )
 
 func toStructType(typ *rtype) *structType {
