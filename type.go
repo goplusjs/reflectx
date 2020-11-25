@@ -54,6 +54,14 @@ func (t *rtype) nameOff(off nameOff) name {
 	return name{(*byte)(resolveNameOff(unsafe.Pointer(t), int32(off)))}
 }
 
+func (t *rtype) typeOff(off typeOff) *rtype {
+	return (*rtype)(resolveTypeOff(unsafe.Pointer(t), int32(off)))
+}
+
+func (t *rtype) textOff(off textOff) unsafe.Pointer {
+	return resolveTextOff(unsafe.Pointer(t), int32(off))
+}
+
 type nameOff int32
 type typeOff int32
 type textOff int32

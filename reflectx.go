@@ -97,13 +97,34 @@ func NamedStructOf(pkgpath string, name string, fields []reflect.StructField) re
 	}
 	named[str] = typ
 	v := reflect.Zero(typ)
-	rt := (*Value)(unsafe.Pointer(&v)).typ
-	st := toStructType(rt)
+	rt1 := (*Value)(unsafe.Pointer(&v)).typ
+	st := toStructType(rt1)
 	st.fields = st.fields[:len(st.fields)-1]
-	rt.str = toNameOff(pkgpath, name, "")
-	rt.tflag |= tflagNamed
-	setUncommonTypePkgPath(rt, toNameOff("", pkgpath, ""))
+	rt1.str = toNameOff(pkgpath, name, "")
+	rt1.tflag |= tflagNamed | tflagExtraStar
+	setUncommonTypePkgPath(rt1, toNameOff("", pkgpath, ""))
 	return typ
+}
+
+func copyType(dst *rtype, src *rtype) {
+	dst.kind = src.kind
+	dst.equal = src.equal
+	dst.align = src.align
+	dst.fieldAlign = src.fieldAlign
+	dst.tflag = src.tflag
+	dst.gcdata = src.gcdata
+}
+
+func NamedTypeOf(pkgpath string, name string, typ reflect.Type) reflect.Type {
+	var fs []reflect.StructField
+	if typ.Kind() == reflect.Struct {
+		for i := 0; i < typ.NumField(); i++ {
+			fs = append(fs, typ.Field(i))
+		}
+	}
+	t := NamedStructOf(pkgpath, name, fs)
+	copyType(totype(t), totype(typ))
+	return t
 }
 
 func toNameOff(pkgpath string, name string, tag string) nameOff {
@@ -112,7 +133,7 @@ func toNameOff(pkgpath string, name string, tag string) nameOff {
 		_, f := path.Split(pkgpath)
 		name = f + "." + name
 	}
-	return resolveReflectName(newName(name, tag, exported))
+	return resolveReflectName(newName("*"+name, tag, exported))
 }
 
 func isExported(name string) bool {
@@ -122,8 +143,8 @@ func isExported(name string) bool {
 
 func totype(typ reflect.Type) *rtype {
 	v := reflect.Zero(typ)
-	rt := (*Value)(unsafe.Pointer(&v)).typ
-	return rt
+	rt1 := (*Value)(unsafe.Pointer(&v)).typ
+	return rt1
 }
 
 func StructOf(fields []reflect.StructField) reflect.Type {
