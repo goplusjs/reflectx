@@ -8,15 +8,18 @@ import (
 	"github.com/goplusjs/gopherjs/js"
 )
 
-func toStructType(typ *rtype) *structType {
-	kind := js.InternalObject(typ).Get("kindType")
+func toStructType(t *rtype) *structType {
+	kind := js.InternalObject(t).Get("kindType")
 	return (*structType)(unsafe.Pointer(kind.Unsafe()))
 }
 
-func toUncommonType(typ *rtype) *uncommonType {
-	kind := js.InternalObject(typ).Get("uncommonType")
+func toUncommonType(t *rtype) *uncommonType {
+	kind := js.InternalObject(t).Get("uncommonType")
 	if kind == js.Undefined {
-		return nil
+		ut := &uncommonType{}
+		js.InternalObject(t).Set("uncommonType", js.InternalObject(ut))
+		js.InternalObject(ut).Set("rtype", js.InternalObject(t))
+		return ut
 	}
 	return (*uncommonType)(unsafe.Pointer(kind.Unsafe()))
 }
@@ -28,15 +31,4 @@ type uncommonType struct {
 	moff    uint32
 
 	_methods []method
-}
-
-func setUncommonTypePkgPath(typ *rtype, n nameOff) {
-	ut := toUncommonType(typ)
-	if ut == nil {
-		ut = &uncommonType{pkgPath: n}
-		js.InternalObject(typ).Set("uncommonType", js.InternalObject(ut))
-	} else {
-		ut.pkgPath = n
-	}
-	typ.tflag |= tflagUncommon
 }
