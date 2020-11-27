@@ -143,7 +143,7 @@ func NamedTypeOf(pkgpath string, name string, from reflect.Type) reflect.Type {
 	if t, ok := namedMap[str]; ok {
 		return t.Type
 	}
-	nt := &NamedType{Type: typ, Kind: TkStruct}
+	nt := &NamedType{Type: typ, From: from, Kind: TkType}
 	namedMap[str] = nt
 	ntypeMap[typ] = nt
 	rt := totype(typ)
