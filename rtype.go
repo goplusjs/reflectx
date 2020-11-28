@@ -80,3 +80,26 @@ type uncommonType struct {
 	moff    uint32  // offset from this uncommontype to [mcount]method
 	_       uint32  // unused
 }
+
+func _copyType(dst *rtype, src *rtype) {
+	dst.size = src.size
+	dst.kind = src.kind
+	dst.equal = src.equal
+	dst.align = src.align
+	dst.fieldAlign = src.fieldAlign
+	dst.tflag = src.tflag
+	dst.gcdata = src.gcdata
+	// switch src.Kind() {
+	// // case reflect.Array:
+	// // 	tt := (*arrayType)(unsafe.Pointer(t))
+	// // case reflect.Chan:
+	// // 	tt := (*chanType)(unsafe.Pointer(t))
+	// // case reflect.Map:
+	// // 	tt := (*mapType)(unsafe.Pointer(t))
+	// // case reflect.Ptr:
+	// // 	tt := (*ptrType)(unsafe.Pointer(t))
+	// case reflect.Slice:
+	// 	tt := (*sliceType)(unsafe.Pointer(src))
+	// 	reflect.SliceOf()
+	// }
+}

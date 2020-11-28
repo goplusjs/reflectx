@@ -143,6 +143,9 @@ func TestNamedStruct(t *testing.T) {
 }
 
 var (
+	u8       = uint8(10)
+	ch       = make(chan bool)
+	fn       func(int, string) bool
 	testBase = []interface{}{
 		true,
 		uint8(1),
@@ -158,15 +161,21 @@ var (
 		100,
 		1.23,
 		"hello",
-		//	[]byte("hello"),
+		[]byte("hello"),
+		[5]byte{'a', 'b', 'c', 'd', 'e'},
+		[]string{"a", "b"},
+		map[int]string{1: "hello", 2: "world"},
+		(*uint8)(&u8),
+		ch,
+		fn,
 	}
 )
 
 func TestNamedTypeBase(t *testing.T) {
-	for _, v := range testBase {
+	for i, v := range testBase {
 		value := reflect.ValueOf(v)
 		typ := value.Type()
-		nt := reflectx.NamedTypeOf("github.com/goplus/reflectx", "My"+typ.Name(), typ)
+		nt := reflectx.NamedTypeOf("github.com/goplus/reflectx", fmt.Sprintf("MyType%v", i), typ)
 		if nt.Kind() != typ.Kind() {
 			t.Errorf("kind: have %v, want %v", nt.Kind(), typ.Kind())
 		}
@@ -177,6 +186,7 @@ func TestNamedTypeBase(t *testing.T) {
 		if s1 != s2 {
 			t.Errorf("%v: have %v, want %v", nt.Kind(), s1, s2)
 		}
+		t.Log(s1)
 	}
 }
 
@@ -196,4 +206,9 @@ func TestNamedType(t *testing.T) {
 	if v.FieldByName("x").Int() != 100 || v.FieldByName("y").Int() != 200 {
 		t.Fatal("Value != {100 200},", v)
 	}
+}
+
+func TestNamedType2(t *testing.T) {
+	typ := reflectx.NamedTypeOf("main", "T", reflect.TypeOf([]byte{}))
+	t.Log(typ.Elem())
 }

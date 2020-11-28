@@ -123,7 +123,108 @@ func NamedStructOf(pkgpath string, name string, fields []reflect.StructField) re
 	return typ
 }
 
+var (
+	index int
+)
+
+func emptyType() reflect.Type {
+	index++
+	typ := reflect.StructOf([]reflect.StructField{
+		reflect.StructField{
+			Name: fmt.Sprintf("Gop_NewType_%v", index),
+			Type: typEmptyStruct,
+		}})
+	rt := totype(typ)
+	st := toStructType(rt)
+	st.fields = st.fields[:len(st.fields)-1]
+	return typ
+}
+
 func NamedTypeOf(pkgpath string, name string, from reflect.Type) reflect.Type {
+	switch from.Kind() {
+	case reflect.Array:
+		typ := reflect.ArrayOf(from.Len(), emptyType())
+		dst := totype(typ)
+		src := totype(from)
+		copyType(dst, src)
+		d := (*arrayType)(unsafe.Pointer(dst))
+		s := (*arrayType)(unsafe.Pointer(src))
+		d.elem = s.elem
+		d.slice = s.slice
+		d.len = s.len
+		setTypeName(dst, pkgpath, name)
+		return typ
+	case reflect.Slice:
+		typ := reflect.SliceOf(emptyType())
+		dst := totype(typ)
+		src := totype(from)
+		copyType(dst, src)
+		d := (*arrayType)(unsafe.Pointer(dst))
+		s := (*arrayType)(unsafe.Pointer(src))
+		d.elem = s.elem
+		setTypeName(dst, pkgpath, name)
+		return typ
+	case reflect.Map:
+		typ := reflect.MapOf(emptyType(), emptyType())
+		dst := totype(typ)
+		src := totype(from)
+		copyType(dst, src)
+		d := (*mapType)(unsafe.Pointer(dst))
+		s := (*mapType)(unsafe.Pointer(src))
+		d.key = s.key
+		d.elem = s.elem
+		d.bucket = s.bucket
+		d.hasher = s.hasher
+		d.keysize = s.keysize
+		d.valuesize = s.valuesize
+		d.bucketsize = s.bucketsize
+		d.flags = s.flags
+		setTypeName(dst, pkgpath, name)
+		return typ
+	case reflect.Ptr:
+		typ := reflect.PtrTo(emptyType())
+		dst := totype(typ)
+		src := totype(from)
+		copyType(dst, src)
+		d := (*ptrType)(unsafe.Pointer(dst))
+		s := (*ptrType)(unsafe.Pointer(src))
+		d.elem = s.elem
+		setTypeName(dst, pkgpath, name)
+		return typ
+	case reflect.Chan:
+		typ := reflect.ChanOf(from.ChanDir(), emptyType())
+		dst := totype(typ)
+		src := totype(from)
+		copyType(dst, src)
+		d := (*chanType)(unsafe.Pointer(dst))
+		s := (*chanType)(unsafe.Pointer(src))
+		d.elem = s.elem
+		d.dir = s.dir
+		setTypeName(dst, pkgpath, name)
+		return typ
+	case reflect.Func:
+		numIn := from.NumIn()
+		in := make([]reflect.Type, numIn, numIn)
+		for i := 0; i < numIn; i++ {
+			in[i] = from.In(i)
+		}
+		numOut := from.NumOut()
+		out := make([]reflect.Type, numOut, numOut)
+		for i := 0; i < numOut; i++ {
+			out[i] = from.Out(i)
+		}
+		typ := reflect.FuncOf(in, out, from.IsVariadic())
+		return typ
+		dst := totype(typ)
+		src := totype(from)
+		copyType(dst, src)
+		d := (*funcType)(unsafe.Pointer(dst))
+		s := (*funcType)(unsafe.Pointer(src))
+		d.inCount = s.inCount
+		d.outCount = s.outCount
+		setTypeName(dst, pkgpath, name)
+		return typ
+	}
 	var fields []reflect.StructField
 	if from.Kind() == reflect.Struct {
 		for i := 0; i < from.NumField(); i++ {
@@ -135,6 +236,9 @@ func NamedTypeOf(pkgpath string, name string, from reflect.Type) reflect.Type {
 			Name: hashName(pkgpath, name),
 			Type: typEmptyStruct,
 		}))
+	rt := totype(typ)
+	st := toStructType(rt)
+	st.fields = st.fields[:len(st.fields)-1]
 	str := typ.String()
 	if t, ok := namedMap[str]; ok {
 		return t.Type
@@ -142,9 +246,6 @@ func NamedTypeOf(pkgpath string, name string, from reflect.Type) reflect.Type {
 	nt := &Named{Type: typ, From: from, Kind: TkType}
 	namedMap[str] = nt
 	ntypeMap[typ] = nt
-	rt := totype(typ)
-	st := toStructType(rt)
-	st.fields = st.fields[:len(st.fields)-1]
 	copyType(rt, totype(from))
 	setTypeName(rt, pkgpath, name)
 	return typ
