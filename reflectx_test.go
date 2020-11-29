@@ -123,31 +123,29 @@ func TestNamedStruct(t *testing.T) {
 		t.Fatalf("reflect.StructOf %v != %v", t1, t2)
 	}
 	t3 := reflectx.NamedStructOf("github.com/goplus/reflectx_test", "Point", fs)
-	t4 := reflectx.NamedStructOf("github.com/goplus/reflectx_test", "Point", fs)
-	t5 := reflectx.NamedStructOf("github.com/goplus/reflectx_test", "Point2", fs)
-	if t3 != t4 {
-		t.Fatalf("NamedStructOf %v != %v", t3, t4)
+	t4 := reflectx.NamedStructOf("github.com/goplus/reflectx_test", "Point2", fs)
+	if t3 == t4 {
+		t.Fatalf("NamedStructOf %v == %v", t3, t4)
 	}
-	if t3 == t5 {
-		t.Fatalf("NamedStructOf %v == %v", t3, t5)
+	if t4.String() != "reflectx_test.Point2" {
+		t.Fatalf("t4.String=%v", t4.String())
 	}
-	if t5.String() != "reflectx_test.Point2" {
-		t.Fatalf("t5.String=%v", t5.String())
+	if t4.Name() != "Point2" {
+		t.Fatalf("t4.Name=%v", t4.Name())
 	}
-	if t5.Name() != "Point2" {
-		t.Fatalf("t5.Name=%v", t5.Name())
-	}
-	if t5.PkgPath() != "github.com/goplus/reflectx_test" {
-		t.Fatalf("t5.PkgPath=%v", t5.PkgPath())
+	if t4.PkgPath() != "github.com/goplus/reflectx_test" {
+		t.Fatalf("t4.PkgPath=%v", t4.PkgPath())
 	}
 }
 
 var (
-	u8       = uint8(10)
-	ch       = make(chan bool)
-	fn       func(int, string) bool
+	ch = make(chan bool)
+	fn = func(int, string) (bool, int) {
+		return true, 0
+	}
 	testBase = []interface{}{
 		true,
+		false,
 		uint8(1),
 		uint16(2),
 		uint32(3),
@@ -165,7 +163,7 @@ var (
 		[5]byte{'a', 'b', 'c', 'd', 'e'},
 		[]string{"a", "b"},
 		map[int]string{1: "hello", 2: "world"},
-		(*uint8)(&u8),
+		new(uint8),
 		ch,
 		fn,
 	}
@@ -206,9 +204,4 @@ func TestNamedType(t *testing.T) {
 	if v.FieldByName("x").Int() != 100 || v.FieldByName("y").Int() != 200 {
 		t.Fatal("Value != {100 200},", v)
 	}
-}
-
-func TestNamedType2(t *testing.T) {
-	typ := reflectx.NamedTypeOf("main", "T", reflect.TypeOf([]byte{}))
-	t.Log(typ.Elem())
 }
