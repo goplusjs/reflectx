@@ -143,7 +143,10 @@ var (
 	fn = func(int, string) (bool, int) {
 		return true, 0
 	}
-	testBase = []interface{}{
+	fn2 = func(*Point, int, bool, []byte) int {
+		return 0
+	}
+	testNamedType = []interface{}{
 		true,
 		false,
 		uint8(1),
@@ -162,20 +165,29 @@ var (
 		[]byte("hello"),
 		[5]byte{'a', 'b', 'c', 'd', 'e'},
 		[]string{"a", "b"},
+		[]int{100, 200},
 		map[int]string{1: "hello", 2: "world"},
 		new(uint8),
 		ch,
 		fn,
+		fn2,
 	}
 )
 
-func TestNamedTypeBase(t *testing.T) {
-	for i, v := range testBase {
+func TestNamedType(t *testing.T) {
+	for i, v := range testNamedType {
 		value := reflect.ValueOf(v)
 		typ := value.Type()
 		nt := reflectx.NamedTypeOf("github.com/goplus/reflectx", fmt.Sprintf("MyType%v", i), typ)
 		if nt.Kind() != typ.Kind() {
 			t.Errorf("kind: have %v, want %v", nt.Kind(), typ.Kind())
+		}
+		if nt == typ {
+			t.Errorf("same type, %v", typ)
+		}
+		nt2 := reflectx.NamedTypeOf("github.com/goplus/reflectx", fmt.Sprintf("My_Type%v", i), typ)
+		if nt == nt2 {
+			t.Errorf("same type, %v", nt)
 		}
 		nv := reflect.New(nt).Elem()
 		reflectx.SetValue(nv, value)
@@ -184,19 +196,27 @@ func TestNamedTypeBase(t *testing.T) {
 		if s1 != s2 {
 			t.Errorf("%v: have %v, want %v", nt.Kind(), s1, s2)
 		}
-		t.Log(s1)
+		named, ok := reflectx.ToNamed(nt)
+		if !ok {
+			t.Errorf("ToNamed error, %v", nt)
+		}
+		t.Log(named)
 	}
 }
 
-func TestNamedType(t *testing.T) {
+func TestNamedTypeStruct(t *testing.T) {
 	typ := reflect.TypeOf((*Point)(nil)).Elem()
 	pkgpath := typ.PkgPath()
 	nt := reflectx.NamedTypeOf(pkgpath, "MyPoint", typ)
+	nt2 := reflectx.NamedTypeOf(pkgpath, "MyPoint2", typ)
 	if nt.NumField() != typ.NumField() {
 		t.Fatal("NumField != 2", nt.NumField())
 	}
 	if nt.Name() != "MyPoint" {
 		t.Fatal("Name != MyPoint", nt.Name())
+	}
+	if nt == nt2 {
+		t.Fatalf("same type %v", nt)
 	}
 	v := reflect.New(nt).Elem()
 	reflectx.Field(v, 0).SetInt(100)
