@@ -165,6 +165,7 @@ func copyType(dst *rtype, src *rtype) {
 	dst.fieldAlign = src.fieldAlign
 	dst.tflag = src.tflag
 	dst.gcdata = src.gcdata
+	dst.ptrdata = src.ptrdata
 }
 
 func isExported(name string) bool {
