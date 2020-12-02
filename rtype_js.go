@@ -3,7 +3,6 @@
 package reflectx
 
 import (
-	"fmt"
 	"reflect"
 	"unsafe"
 
@@ -13,9 +12,6 @@ import (
 //go:linkname reflectType reflect.reflectType
 func reflectType(typ *js.Object) reflect.Type
 
-//go:linkname _reflectType reflect.reflectType
-func _reflectType(typ *js.Object) *rtype
-
 //go:linkname setKindType reflect.setKindType
 func setKindType(rt *rtype, kindType interface{})
 
@@ -23,44 +19,6 @@ func toStructType(t *rtype) *structType {
 	kind := js.InternalObject(t).Get("kindType")
 	return (*structType)(unsafe.Pointer(kind.Unsafe()))
 }
-
-func Test() {
-	//fn := js.Global.Get("$newType")
-	fn := js.Global.Get("makeType") //, 10, 20)
-	v := fn.Invoke()
-	fmt.Println(v.Get("size"))
-	r0 := reflectType(v)
-	v0 := reflect.New(r0).Elem()
-	v0.Set(reflect.ValueOf(100))
-	fmt.Println(v0)
-
-	//	return reflectType(js.InternalObject(i).Get("constructor"))
-
-	// fmt.Println(reflectType(v, "MyInt"))
-	// t := emptyType()
-	// r0 := totype(t)
-	// r1 := reflectType(v, "MyInt")
-	// //r1.kind = uint8(reflect.Int)
-	// copyType(r0, r1)
-	// setTypeName(r0, "main", "MyInt")
-	// fmt.Println(t.Kind(), r1.Kind())
-	// v1 := reflect.New(t).Elem()
-	// v1.SetInt(10)
-	// fmt.Println(v1)
-}
-
-// func reflectType(typ *js.Object, name string) *rtype {
-// 	if typ.Get("reflectType") == js.Undefined {
-// 		rt := &rtype{
-// 			size: uintptr(typ.Get("size").Int()),
-// 			kind: uint8(typ.Get("kind").Int()),
-// 			str:  resolveReflectName(newName(name, "", isExported(name))),
-// 		}
-// 		js.InternalObject(rt).Set("jsType", typ)
-// 		typ.Set("reflectType", js.InternalObject(rt))
-// 	}
-// 	return (*rtype)(unsafe.Pointer(typ.Get("reflectType").Unsafe()))
-// }
 
 func toUncommonType(t *rtype) *uncommonType {
 	kind := js.InternalObject(t).Get("uncommonType")
@@ -165,10 +123,6 @@ var (
 	UnsafePointer
 */
 var (
-	kinds = []int{0, 1,
-		2, 3, 4, 5, 6, // int
-		7, 8, 9, 10, 11, // uint
-	}
 	sizes = []int{0, 1,
 		4, 1, 2, 4, 8, // int
 		4, 1, 2, 4, 8, // uint
