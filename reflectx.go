@@ -68,62 +68,109 @@ func typeName(typ reflect.Type) string {
 }
 
 var (
-	namedMagic     = "Gop_Temp_"
-	named          = make(map[string]reflect.Type)
+	ntypeMap       = make(map[reflect.Type]*Named)
 	typEmptyStruct = reflect.StructOf(nil)
 )
 
-// fnv1 incorporates the list of bytes into the hash x using the FNV-1 hash function.
-func fnv1(x uint32, list string) uint32 {
-	for _, b := range list {
-		x = x*16777619 ^ uint32(b)
-	}
-	return x
+type TypeKind int
+
+const (
+	TkInvalid TypeKind = iota
+	TkStruct
+	TkType
+	TkInterface
+)
+
+type Named struct {
+	Name    string
+	PkgPath string
+	Type    reflect.Type
+	From    reflect.Type
+	Kind    TypeKind
 }
 
-func hashName(pkgpath string, name string) string {
-	return fmt.Sprintf("Gop_Unused_%d_%d", fnv1(0, pkgpath), fnv1(0, name))
+func IsNamed(typ reflect.Type) bool {
+	_, ok := ntypeMap[typ]
+	return ok
+}
+
+func ToNamed(typ reflect.Type) (t *Named, ok bool) {
+	t, ok = ntypeMap[typ]
+	return
 }
 
 func NamedStructOf(pkgpath string, name string, fields []reflect.StructField) reflect.Type {
 	typ := StructOf(append(append([]reflect.StructField{}, fields...),
 		reflect.StructField{
-			Name: hashName(pkgpath, name),
+			Name: unusedName(),
 			Type: typEmptyStruct,
 		}))
-	str := typ.String()
-	if t, ok := named[str]; ok {
-		return t
-	}
-	named[str] = typ
-	v := reflect.Zero(typ)
-	rt := (*Value)(unsafe.Pointer(&v)).typ
+	nt := &Named{Name: name, PkgPath: pkgpath, Type: typ, Kind: TkStruct}
+	ntypeMap[typ] = nt
+	rt := totype(typ)
 	st := toStructType(rt)
 	st.fields = st.fields[:len(st.fields)-1]
-	rt.str = toNameOff(pkgpath, name, "")
-	rt.tflag |= tflagNamed
-	setUncommonTypePkgPath(rt, toNameOff("", pkgpath, ""))
+	setTypeName(rt, pkgpath, name)
 	return typ
 }
 
-func toNameOff(pkgpath string, name string, tag string) nameOff {
+var (
+	index int
+)
+
+func unusedName() string {
+	index++
+	return fmt.Sprintf("Gop_unused_%v", index)
+}
+
+func emptyType() reflect.Type {
+	typ := reflect.StructOf([]reflect.StructField{
+		reflect.StructField{
+			Name: unusedName(),
+			Type: typEmptyStruct,
+		}})
+	rt := totype(typ)
+	st := toStructType(rt)
+	st.fields = st.fields[:len(st.fields)-1]
+	st.str = resolveReflectName(newName("unused", "", false))
+	return typ
+}
+
+func setTypeName(t *rtype, pkgpath string, name string) {
 	exported := isExported(name)
 	if pkgpath != "" {
 		_, f := path.Split(pkgpath)
 		name = f + "." + name
 	}
-	return resolveReflectName(newName(name, tag, exported))
+	t.tflag |= tflagNamed | tflagExtraStar
+	t.str = resolveReflectName(newName("*"+name, "", exported))
+	switch t.Kind() {
+	case reflect.Array:
+	case reflect.Slice:
+	case reflect.Map:
+	case reflect.Ptr:
+	case reflect.Func:
+	case reflect.Chan:
+	default:
+		t.tflag |= tflagUncommon
+		toUncommonType(t).pkgPath = resolveReflectName(newName(pkgpath, "", false))
+	}
+}
+
+func copyType(dst *rtype, src *rtype) {
+	dst.size = src.size
+	dst.kind = src.kind
+	dst.equal = src.equal
+	dst.align = src.align
+	dst.fieldAlign = src.fieldAlign
+	dst.tflag = src.tflag
+	dst.gcdata = src.gcdata
+	dst.ptrdata = src.ptrdata
 }
 
 func isExported(name string) bool {
 	ch, _ := utf8.DecodeRuneInString(name)
 	return unicode.IsUpper(ch)
-}
-
-func totype(typ reflect.Type) *rtype {
-	v := reflect.Zero(typ)
-	rt := (*Value)(unsafe.Pointer(&v)).typ
-	return rt
 }
 
 func StructOf(fields []reflect.StructField) reflect.Type {
@@ -148,4 +195,39 @@ func StructOf(fields []reflect.StructField) reflect.Type {
 		st.fields[i].offsetEmbed |= 1
 	}
 	return typ
+}
+
+// fnv1 incorporates the list of bytes into the hash x using the FNV-1 hash function.
+func fnv1(x uint32, list string) uint32 {
+	for _, b := range list {
+		x = x*16777619 ^ uint32(b)
+	}
+	return x
+}
+
+func hashName(pkgpath string, name string) string {
+	return fmt.Sprintf("Gop_Named_%d_%d", fnv1(0, pkgpath), fnv1(0, name))
+}
+
+func SetValue(v reflect.Value, x reflect.Value) {
+	switch v.Kind() {
+	case reflect.Bool:
+		v.SetBool(x.Bool())
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		v.SetInt(x.Int())
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		v.SetUint(x.Uint())
+	case reflect.Uintptr:
+		v.SetUint(x.Uint())
+	case reflect.Float32, reflect.Float64:
+		v.SetFloat(x.Float())
+	case reflect.Complex64, reflect.Complex128:
+		v.SetComplex(x.Complex())
+	case reflect.String:
+		v.SetString(x.String())
+	case reflect.UnsafePointer:
+		v.SetPointer(unsafe.Pointer(x.Pointer()))
+	default:
+		v.Set(x)
+	}
 }

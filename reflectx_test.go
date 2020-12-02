@@ -2,8 +2,10 @@ package reflectx_test
 
 import (
 	"bytes"
+	"fmt"
 	"reflect"
 	"testing"
+	"unsafe"
 
 	"github.com/goplusjs/reflectx"
 )
@@ -37,13 +39,13 @@ func TestFieldCanSet(t *testing.T) {
 	}
 }
 
-type MyPoint struct {
+type Rect struct {
 	pt1 Point
 	pt2 *Point
 }
 
 func TestField(t *testing.T) {
-	x := &MyPoint{Point{1, 2}, &Point{3, 4}}
+	x := &Rect{Point{1, 2}, &Point{3, 4}}
 	v := reflect.ValueOf(x).Elem()
 	reflectx.Field(v, 0).Set(reflect.ValueOf(Point{10, 20}))
 	if x.pt1.x != 10 || x.pt1.y != 20 {
@@ -111,7 +113,7 @@ func TestStructOfX(t *testing.T) {
 	reflectx.CanSet(v.Elem().Field(1)).SetInt(100)
 }
 
-func TestNamed(t *testing.T) {
+func TestNamedStruct(t *testing.T) {
 	fs := []reflect.StructField{
 		reflect.StructField{Name: "X", Type: reflect.TypeOf(0)},
 		reflect.StructField{Name: "Y", Type: reflect.TypeOf(0)},
@@ -122,21 +124,115 @@ func TestNamed(t *testing.T) {
 		t.Fatalf("reflect.StructOf %v != %v", t1, t2)
 	}
 	t3 := reflectx.NamedStructOf("github.com/goplus/reflectx_test", "Point", fs)
-	t4 := reflectx.NamedStructOf("github.com/goplus/reflectx_test", "Point", fs)
-	t5 := reflectx.NamedStructOf("github.com/goplus/reflectx_test", "Point2", fs)
-	if t3 != t4 {
-		t.Fatalf("NamedStructOf %v != %v", t3, t4)
+	t4 := reflectx.NamedStructOf("github.com/goplus/reflectx_test", "Point2", fs)
+	if t3 == t4 {
+		t.Fatalf("NamedStructOf %v == %v", t3, t4)
 	}
-	if t3 == t5 {
-		t.Fatalf("NamedStructOf %v == %v", t3, t5)
+	if t4.String() != "reflectx_test.Point2" {
+		t.Fatalf("t4.String=%v", t4.String())
 	}
-	if t5.String() != "reflectx_test.Point2" {
-		t.Fatalf("t5.String=%v", t5.String())
+	if t4.Name() != "Point2" {
+		t.Fatalf("t4.Name=%v", t4.Name())
 	}
-	if t5.Name() != "Point2" {
-		t.Fatalf("t5.Name=%v", t5.Name())
+	if t4.PkgPath() != "github.com/goplus/reflectx_test" {
+		t.Fatalf("t4.PkgPath=%v", t4.PkgPath())
 	}
-	if t5.PkgPath() != "github.com/goplus/reflectx_test" {
-		t.Fatalf("t5.PkgPath=%v", t5.PkgPath())
+}
+
+var (
+	ch = make(chan bool)
+	fn = func(int, string) (bool, int) {
+		return true, 0
+	}
+	fn2 = func(*Point, int, bool, []byte) int {
+		return 0
+	}
+	testNamedType = []interface{}{
+		true,
+		false,
+		int(2),
+		int8(3),
+		int16(4),
+		int32(5),
+		int64(6),
+		uint(7),
+		uint8(8),
+		uint16(9),
+		uint32(10),
+		uint64(11),
+		uintptr(12),
+		float32(13),
+		float64(14),
+		complex64(15),
+		complex128(16),
+		"hello",
+		unsafe.Pointer(nil),
+		unsafe.Pointer(&fn),
+		[]byte("hello"),
+		[]int{1, 2, 3},
+		[5]byte{'a', 'b', 'c', 'd', 'e'},
+		[5]int{1, 2, 3, 4, 5},
+		[]string{"a", "b"},
+		[]int{100, 200},
+		map[int]string{1: "hello", 2: "world"},
+		new(uint8),
+		&fn,
+		&fn2,
+		&ch,
+		ch,
+		fn,
+		fn2,
+	}
+)
+
+func TestNamedType(t *testing.T) {
+	for i, v := range testNamedType {
+		value := reflect.ValueOf(v)
+		typ := value.Type()
+		nt := reflectx.NamedTypeOf("github.com/goplus/reflectx", fmt.Sprintf("MyType%v", i), typ)
+		if nt.Kind() != typ.Kind() {
+			t.Errorf("kind: have %v, want %v", nt.Kind(), typ.Kind())
+		}
+		if nt == typ {
+			t.Errorf("same type, %v", typ)
+		}
+		nt2 := reflectx.NamedTypeOf("github.com/goplus/reflectx", fmt.Sprintf("My_Type%v", i), typ)
+		if nt == nt2 {
+			t.Errorf("same type, %v", nt)
+		}
+		nv := reflect.New(nt).Elem()
+		reflectx.SetValue(nv, value) //
+		s1 := fmt.Sprintf("%v", nv)
+		s2 := fmt.Sprintf("%v", v)
+		if s1 != s2 {
+			t.Errorf("%v: have %v, want %v", nt.Kind(), s1, s2)
+		}
+		named, ok := reflectx.ToNamed(nt)
+		if !ok {
+			t.Errorf("ToNamed error, %v", nt)
+		}
+		t.Log(named)
+	}
+}
+
+func TestNamedTypeStruct(t *testing.T) {
+	typ := reflect.TypeOf((*Point)(nil)).Elem()
+	pkgpath := typ.PkgPath()
+	nt := reflectx.NamedTypeOf(pkgpath, "MyPoint", typ)
+	nt2 := reflectx.NamedTypeOf(pkgpath, "MyPoint2", typ)
+	if nt.NumField() != typ.NumField() {
+		t.Fatal("NumField != 2", nt.NumField())
+	}
+	if nt.Name() != "MyPoint" {
+		t.Fatal("Name != MyPoint", nt.Name())
+	}
+	if nt == nt2 {
+		t.Fatalf("same type %v", nt)
+	}
+	v := reflect.New(nt).Elem()
+	reflectx.Field(v, 0).SetInt(100)
+	reflectx.Field(v, 1).SetInt(200)
+	if v.FieldByName("x").Int() != 100 || v.FieldByName("y").Int() != 200 {
+		t.Fatal("Value != {100 200},", v)
 	}
 }

@@ -16,7 +16,9 @@
 
 package reflectx
 
-import "unsafe"
+import (
+	"unsafe"
+)
 
 type Value struct {
 	// typ holds the type of the value represented by a Value.
