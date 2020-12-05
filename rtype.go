@@ -3,7 +3,6 @@
 package reflectx
 
 import (
-	"fmt"
 	"reflect"
 	"unsafe"
 )
@@ -264,21 +263,8 @@ func (t *rtype) Method(i int) (m reflect.Method) {
 	return m
 }
 
-func tovalue(v reflect.Value) *Value {
-	return (*Value)(unsafe.Pointer(&v))
-}
-
-type Point struct {
-	X int
-	Y int
-}
-
-func (p Point) Check1() {
-	fmt.Println("check1", p)
-}
-
-func Check2(p Point) {
-	fmt.Println("check2", p)
+func tovalue(v *reflect.Value) *Value {
+	return (*Value)(unsafe.Pointer(v))
 }
 
 func toType(rt *rtype) reflect.Type {
