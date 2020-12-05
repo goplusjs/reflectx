@@ -3,6 +3,7 @@
 package reflectx
 
 import (
+	"fmt"
 	"reflect"
 	"unsafe"
 )
@@ -211,4 +212,138 @@ func totype(typ reflect.Type) *rtype {
 	v := reflect.Zero(typ)
 	rt := (*Value)(unsafe.Pointer(&v)).typ
 	return rt
+}
+
+func (t *uncommonType) methods() []method {
+	if t.mcount == 0 {
+		return nil
+	}
+	return (*[1 << 16]method)(add(unsafe.Pointer(t), uintptr(t.moff), "t.mcount > 0"))[:t.mcount:t.mcount]
+}
+
+func (t *uncommonType) exportedMethods() []method {
+	if t.xcount == 0 {
+		return nil
+	}
+	return (*[1 << 16]method)(add(unsafe.Pointer(t), uintptr(t.moff), "t.xcount > 0"))[:t.xcount:t.xcount]
+}
+
+func (t *rtype) Method(i int) (m reflect.Method) {
+	if t.Kind() == reflect.Interface {
+		tt := (*interfaceType)(unsafe.Pointer(t))
+		return tt.Method(i)
+	}
+	methods := t.exportedMethods()
+	if i < 0 || i >= len(methods) {
+		panic("reflect: Method index out of range")
+	}
+	p := methods[i]
+	pname := t.nameOff(p.name)
+	m.Name = pname.name()
+	fl := flag(reflect.Func)
+	mtyp := t.typeOff(p.mtyp)
+	ft := (*funcType)(unsafe.Pointer(mtyp))
+	in := make([]reflect.Type, 0, 1+len(ft.in()))
+	in = append(in, toType(t))
+	for _, arg := range ft.in() {
+		in = append(in, toType(arg))
+	}
+	out := make([]reflect.Type, 0, len(ft.out()))
+	for _, ret := range ft.out() {
+		out = append(out, toType(ret))
+	}
+	mt := reflect.FuncOf(in, out, ft.IsVariadic())
+	m.Type = mt
+
+	tfn := t.textOff(p.tfn)
+	fn := unsafe.Pointer(&tfn)
+
+	m.Func = *(*reflect.Value)(unsafe.Pointer(&Value{totype(mt), fn, fl}))
+
+	m.Index = i
+	return m
+}
+
+func tovalue(v reflect.Value) *Value {
+	return (*Value)(unsafe.Pointer(&v))
+}
+
+type Point struct {
+	X int
+	Y int
+}
+
+func (p Point) Check1() {
+	fmt.Println("check1", p)
+}
+
+func Check2(p Point) {
+	fmt.Println("check2", p)
+}
+
+func toType(rt *rtype) reflect.Type {
+	return (*reflect.Value)(unsafe.Pointer(&Value{typ: rt, flag: flag(rt.Kind())})).Type()
+}
+
+func (t *rtype) uncommon() *uncommonType {
+	return toUncommonType(t)
+}
+
+func (t *rtype) exportedMethods() []method {
+	ut := t.uncommon()
+	if ut == nil {
+		return nil
+	}
+	return ut.exportedMethods()
+}
+
+func (t *rtype) NumMethod() int {
+	if t.Kind() == reflect.Interface {
+		tt := (*interfaceType)(unsafe.Pointer(t))
+		return tt.NumMethod()
+	}
+	return len(t.exportedMethods())
+}
+
+func (n name) name() (s string) {
+	if n.bytes == nil {
+		return
+	}
+	b := (*[4]byte)(unsafe.Pointer(n.bytes))
+
+	hdr := (*stringHeader)(unsafe.Pointer(&s))
+	hdr.Data = unsafe.Pointer(&b[3])
+	hdr.Len = int(b[1])<<8 | int(b[2])
+	return s
+}
+
+func (t *funcType) in() []*rtype {
+	uadd := unsafe.Sizeof(*t)
+	if t.tflag&tflagUncommon != 0 {
+		uadd += unsafe.Sizeof(uncommonType{})
+	}
+	if t.inCount == 0 {
+		return nil
+	}
+	return (*[1 << 20]*rtype)(add(unsafe.Pointer(t), uadd, "t.inCount > 0"))[:t.inCount:t.inCount]
+}
+
+func (t *funcType) out() []*rtype {
+	uadd := unsafe.Sizeof(*t)
+	if t.tflag&tflagUncommon != 0 {
+		uadd += unsafe.Sizeof(uncommonType{})
+	}
+	outCount := t.outCount & (1<<15 - 1)
+	if outCount == 0 {
+		return nil
+	}
+	return (*[1 << 20]*rtype)(add(unsafe.Pointer(t), uadd, "outCount > 0"))[t.inCount : t.inCount+outCount : t.inCount+outCount]
+}
+
+func (t *rtype) IsVariadic() bool {
+	if t.Kind() != reflect.Func {
+		panic("reflect: IsVariadic of non-func type " + toType(t).String())
+	}
+	tt := (*funcType)(unsafe.Pointer(t))
+	return tt.outCount&(1<<15) != 0
 }
