@@ -26,7 +26,7 @@ func MyFunc(pt Point) {
 	fmt.Println(pt)
 }
 
-func SetMethod(styp reflect.Type, ms []reflect.Method) reflect.Type {
+func MethodOf(styp reflect.Type, ms []reflect.Method) reflect.Type {
 	var methods []method
 	for _, m := range ms {
 		ptr := tovalue(&m.Func).ptr
@@ -43,23 +43,29 @@ func SetMethod(styp reflect.Type, ms []reflect.Method) reflect.Type {
 		{Name: "M", Type: reflect.ArrayOf(len(methods), reflect.TypeOf(methods[0]))},
 	}))
 
-	typ := (*structType)(unsafe.Pointer(tt.Elem().Field(0).UnsafeAddr()))
+	st := (*structType)(unsafe.Pointer(tt.Elem().Field(0).UnsafeAddr()))
 	ut := (*uncommonType)(unsafe.Pointer(tt.Elem().Field(1).UnsafeAddr()))
 	copy(tt.Elem().Field(2).Slice(0, len(methods)).Interface().([]method), methods)
 	ut.mcount = uint16(len(methods))
 	ut.xcount = ut.mcount
 	ut.moff = uint32(unsafe.Sizeof(uncommonType{}))
 
-	rt := totype(styp)
-	st := toStructType(rt)
+	ort := totype(styp)
+	ost := toStructType(ort)
 
-	typ.tflag = rt.tflag
-	typ.kind = rt.kind
-	typ.fields = st.fields
-	typ.fieldAlign = st.fieldAlign
-	typ.str = resolveReflectName(rt.nameOff(rt.str))
+	st.tflag = ort.tflag
+	st.kind = ort.kind
+	st.fields = ost.fields
+	st.fieldAlign = ost.fieldAlign
+	st.str = resolveReflectName(ort.nameOff(ort.str))
 
-	return toType((*rtype)(unsafe.Pointer(typ)))
+	rt := (*rtype)(unsafe.Pointer(st))
+	typ := toType(rt)
+
+	nt := &Named{Name: styp.Name(), PkgPath: styp.PkgPath(), Type: typ, Kind: TkStruct}
+	ntypeMap[typ] = nt
+
+	return typ
 }
 
 func TestMethod(t *testing.T) {
@@ -72,7 +78,7 @@ func TestMethod(t *testing.T) {
 		log.Println("-->", args)
 		return []reflect.Value{reflect.ValueOf("Hello")}
 	})
-	nt := SetMethod(typ, []reflect.Method{
+	nt := MethodOf(typ, []reflect.Method{
 		reflect.Method{
 			Name: "String",
 			Type: mtyp,
@@ -89,8 +95,8 @@ func TestMethod(t *testing.T) {
 	//t.Log("--->", v)
 }
 
-func TestMe(t *testing.T) {
-	t.Log("Test")
+func _TestMe(t *testing.T) {
+	//t.Log("Test")
 	// _t := reflect.TypeOf((*Point)(nil)).Elem()
 	// //totype(_t).kind |= kindDirectIface
 	// _v := reflect.New(_t).Elem()
