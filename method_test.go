@@ -53,6 +53,7 @@ func MethodOf(styp reflect.Type, ms []reflect.Method) reflect.Type {
 	ort := totype(styp)
 	ost := toStructType(ort)
 
+	st.size = ort.size
 	st.tflag = ort.tflag
 	st.kind = ort.kind
 	st.fields = ost.fields
@@ -60,7 +61,19 @@ func MethodOf(styp reflect.Type, ms []reflect.Method) reflect.Type {
 	st.str = resolveReflectName(ort.nameOff(ort.str))
 
 	rt := (*rtype)(unsafe.Pointer(st))
+	setTypeName(rt, "main", "PointX")
 	typ := toType(rt)
+
+	for _, m := range ms {
+		mtyp := m.Func.Type()
+		var out []reflect.Type
+		for i := 0; i < mtyp.NumOut(); i++ {
+			out = append(out, mtyp.Out(i))
+		}
+		ntyp := reflect.FuncOf([]reflect.Type{typ}, out, false)
+		funcImpl := (*makeFuncImpl)(tovalue(&m.Func).ptr)
+		funcImpl.ftyp = (*funcType)(unsafe.Pointer(totype(ntyp)))
+	}
 
 	nt := &Named{Name: styp.Name(), PkgPath: styp.PkgPath(), Type: typ, Kind: TkStruct}
 	ntypeMap[typ] = nt
@@ -68,14 +81,47 @@ func MethodOf(styp reflect.Type, ms []reflect.Method) reflect.Type {
 	return typ
 }
 
+func MethodByType(typ reflect.Type, index int) reflect.Method {
+	m := typ.Method(index)
+	if _, ok := ntypeMap[typ]; ok {
+		tovalue(&m.Func).flag |= flagIndir
+	}
+	return m
+}
+
+func myString(s struct {
+	x int
+	y int
+}) string {
+	log.Println("myString---->", s)
+	return "myString"
+}
+
+type makeFuncImpl struct {
+	code   uintptr
+	stack  *bitVector // ptrmap for both args and results
+	argLen uintptr    // just args
+	ftyp   *funcType
+	fn     func([]Value) []Value
+}
+
+type bitVector struct {
+	n    uint32 // number of bits
+	data []byte
+}
+
 func TestMethod(t *testing.T) {
-	typ := NamedStructOf("main", "Point", nil)
+	fs := []reflect.StructField{
+		reflect.StructField{Name: "X", Type: reflect.TypeOf(0)},
+		reflect.StructField{Name: "Y", Type: reflect.TypeOf(0)},
+	}
+	typ := NamedStructOf("main", "Point", fs)
 	t.Log(typ)
 
 	styp := reflect.TypeOf("")
 	mtyp := reflect.FuncOf(nil, []reflect.Type{styp}, false)
 	mfn := reflect.MakeFunc(mtyp, func(args []reflect.Value) []reflect.Value {
-		log.Println("-->", args)
+		log.Println("--->", args[0].Type(), args[0].Field(1), args[0].NumMethod())
 		return []reflect.Value{reflect.ValueOf("Hello")}
 	})
 	nt := MethodOf(typ, []reflect.Method{
@@ -85,14 +131,15 @@ func TestMethod(t *testing.T) {
 			Func: mfn,
 		},
 	})
-	t.Log(nt.NumMethod())
-	m := nt.Method(0)
+	t.Log(nt.NumField(), nt.NumMethod())
+	m := MethodByType(nt, 0)
 	v := reflect.New(nt).Elem()
-	t.Log(m.Func)
-	tovalue(&m.Func).flag |= flagIndir
+	v.Field(0).SetInt(100)
+	v.Field(1).SetInt(200)
+	log.Println("--->", m.Func.Type(), v.Type())
 	r := m.Func.Call([]reflect.Value{v})
 	t.Log(r)
-	//t.Log("--->", v)
+	//log.Println("--->", v.Interface())
 }
 
 func _TestMe(t *testing.T) {
