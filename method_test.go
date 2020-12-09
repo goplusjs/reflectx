@@ -65,11 +65,16 @@ func MethodOf(styp reflect.Type, ms []reflect.Method) reflect.Type {
 
 	for _, m := range ms {
 		mtyp := m.Func.Type()
+		var in []reflect.Type
+		in = append(in, typ)
+		for i := 0; i < mtyp.NumIn(); i++ {
+			in = append(in, mtyp.In(i))
+		}
 		var out []reflect.Type
 		for i := 0; i < mtyp.NumOut(); i++ {
 			out = append(out, mtyp.Out(i))
 		}
-		ntyp := reflect.FuncOf([]reflect.Type{typ}, out, false)
+		ntyp := reflect.FuncOf(in, out, false)
 		funcImpl := (*makeFuncImpl)(tovalue(&m.Func).ptr)
 		funcImpl.ftyp = (*funcType)(unsafe.Pointer(totype(ntyp)))
 	}
@@ -109,6 +114,11 @@ type bitVector struct {
 	data []byte
 }
 
+var (
+	intTyp = reflect.TypeOf(0)
+	strTyp = reflect.TypeOf("")
+)
+
 func TestMethod(t *testing.T) {
 	fs := []reflect.StructField{
 		reflect.StructField{Name: "X", Type: reflect.TypeOf(0)},
@@ -117,15 +127,14 @@ func TestMethod(t *testing.T) {
 	typ := NamedStructOf("main", "Point", fs)
 	t.Log(typ)
 
-	styp := reflect.TypeOf("")
-	mtyp := reflect.FuncOf(nil, []reflect.Type{styp}, false)
+	mtyp := reflect.FuncOf([]reflect.Type{intTyp}, []reflect.Type{strTyp}, false)
 	mfn := reflect.MakeFunc(mtyp, func(args []reflect.Value) []reflect.Value {
-		log.Println("--->", args[0].Type(), args[0].Field(1), args[0].NumMethod())
+		log.Println("call func --->", args[0], args[1])
 		return []reflect.Value{reflect.ValueOf("Hello")}
 	})
 	nt := MethodOf(typ, []reflect.Method{
 		reflect.Method{
-			Name: "String",
+			Name: "Test",
 			Type: mtyp,
 			Func: mfn,
 		},
@@ -135,8 +144,8 @@ func TestMethod(t *testing.T) {
 	v := reflect.New(nt).Elem()
 	v.Field(0).SetInt(100)
 	v.Field(1).SetInt(200)
-	log.Println("--->", m.Func.Type(), m.Type)
-	r := m.Func.Call([]reflect.Value{v})
+	log.Println("funcType:", m.Func.Type(), m.Type)
+	r := m.Func.Call([]reflect.Value{v, reflect.ValueOf(300)})
 	t.Log(r)
 	//log.Println("--->", v.Interface())
 }
