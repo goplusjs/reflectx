@@ -61,7 +61,6 @@ func MethodOf(styp reflect.Type, ms []reflect.Method) reflect.Type {
 	st.str = resolveReflectName(ort.nameOff(ort.str))
 
 	rt := (*rtype)(unsafe.Pointer(st))
-	setTypeName(rt, "main", "PointX")
 	typ := toType(rt)
 
 	for _, m := range ms {
@@ -136,7 +135,7 @@ func TestMethod(t *testing.T) {
 	v := reflect.New(nt).Elem()
 	v.Field(0).SetInt(100)
 	v.Field(1).SetInt(200)
-	log.Println("--->", m.Func.Type(), v.Type())
+	log.Println("--->", m.Func.Type(), m.Type)
 	r := m.Func.Call([]reflect.Value{v})
 	t.Log(r)
 	//log.Println("--->", v.Interface())
