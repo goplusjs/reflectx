@@ -180,10 +180,11 @@ var (
 type wraper struct {
 }
 
-func (w wraper) IOs() string {
+func (w wraper) IOs() []byte {
 	v := valueMap[w]
 	r := MethodByType(v.v.Type(), v.index).Func.Call([]reflect.Value{v.v})
-	return r[0].String()
+	s := r[0].String()
+	return *(*[]byte)(unsafe.Pointer(&s))
 }
 
 func TestTypeMethod(t *testing.T) {
