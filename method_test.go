@@ -2,7 +2,6 @@ package reflectx
 
 import (
 	"fmt"
-	"log"
 	"reflect"
 	"testing"
 	"unsafe"
@@ -11,20 +10,6 @@ import (
 // memmove copies size bytes to dst from src. No write barriers are used.
 //go:linkname memmove reflect.memmove
 func memmove(dst, src unsafe.Pointer, size uintptr)
-
-type Point struct {
-	X int
-	Y int
-}
-
-func (pt Point) String() string {
-	fmt.Println("~~~~", pt.X, pt.Y)
-	return "[MyPoint]"
-}
-
-func MyFunc(pt Point) {
-	fmt.Println(pt)
-}
 
 func MethodOf(styp reflect.Type, ms []reflect.Method) reflect.Type {
 	var methods []method
@@ -93,14 +78,6 @@ func MethodByType(typ reflect.Type, index int) reflect.Method {
 	return m
 }
 
-func myString(s struct {
-	x int
-	y int
-}) string {
-	log.Println("myString---->", s)
-	return "myString"
-}
-
 type makeFuncImpl struct {
 	code   uintptr
 	stack  *bitVector // ptrmap for both args and results
@@ -128,8 +105,8 @@ func TestValueMethod(t *testing.T) {
 	typ := NamedStructOf("main", "Point", fs)
 	mtyp := reflect.FuncOf([]reflect.Type{}, []reflect.Type{strTyp}, false)
 	mfn := reflect.MakeFunc(mtyp, func(args []reflect.Value) []reflect.Value {
-		log.Println("---->makeFunc", args)
-		return []reflect.Value{reflect.ValueOf("hello")}
+		info := fmt.Sprintf("info:{%v %v}", args[0].Field(0), args[0].Field(1))
+		return []reflect.Value{reflect.ValueOf(info)}
 	})
 	nt := MethodOf(typ, []reflect.Method{
 		reflect.Method{
@@ -164,8 +141,11 @@ func TestValueMethod(t *testing.T) {
 
 	valueMap[w] = valueMethod{v, 0}
 
-	log.Println(v.Method(0).Call(nil))
-	log.Println(v)
+	r := v.Method(0).Call(nil)
+	if len(r) != 1 || r[0].String() != "info:{100 200}" {
+		t.Fatal("bad method call", r)
+	}
+	t.Log("call String() string", v)
 }
 
 type valueMethod struct {
