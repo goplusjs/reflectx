@@ -117,20 +117,85 @@ type bitVector struct {
 var (
 	intTyp = reflect.TypeOf(0)
 	strTyp = reflect.TypeOf("")
+	iType  = reflect.TypeOf((*interface{})(nil)).Elem()
 )
 
-func TestMethod(t *testing.T) {
+func TestValueMethod(t *testing.T) {
 	fs := []reflect.StructField{
 		reflect.StructField{Name: "X", Type: reflect.TypeOf(0)},
 		reflect.StructField{Name: "Y", Type: reflect.TypeOf(0)},
 	}
 	typ := NamedStructOf("main", "Point", fs)
-	t.Log(typ)
+	mtyp := reflect.FuncOf([]reflect.Type{}, []reflect.Type{strTyp}, false)
+	mfn := reflect.MakeFunc(mtyp, func(args []reflect.Value) []reflect.Value {
+		log.Println("---->makeFunc", args)
+		return []reflect.Value{reflect.ValueOf("hello")}
+	})
+	nt := MethodOf(typ, []reflect.Method{
+		reflect.Method{
+			Name: "String",
+			Type: mtyp,
+			Func: mfn,
+		},
+	})
+	ms := totype(nt).exportedMethods()
 
+	w := wraper{}
+
+	vw := reflect.ValueOf(w)
+	vt := tovalue(&vw).typ
+
+	m0 := vt.exportedMethods()[0]
+	ms[0].ifn = resolveReflectText(vt.textOff(m0.ifn))
+	// vm := tovalue(&vw.Method(0))
+	// ms[0].ifn = resolveReflectText(vm.ptr)
+	//ms[0].tfn = resolveReflectText(vt.textOff(m0.tfn))
+
+	//ifn := reflect.ValueOf((*wraper).IOs)
+	// tfn := reflect.ValueOf((wraper).Test)
+	// log.Println(ifn, unsafe.Pointer(ifn.Pointer()), tovalue(&ifn).ptr, tovalue(&ifn).flag, uint8(reflect.Func))
+	// log.Println(tfn, unsafe.Pointer(tfn.Pointer()), tovalue(&tfn).ptr, tovalue(&tfn).flag)
+	// log.Println(mfn, unsafe.Pointer(mfn.Pointer()), tovalue(&mfn).ptr)
+
+	v0 := reflect.New(nt)
+	v := v0.Elem()
+	v.Field(0).SetInt(100)
+	v.Field(1).SetInt(200)
+
+	valueMap[w] = valueMethod{v, 0}
+
+	log.Println(v.Method(0).Call(nil))
+	log.Println(v)
+}
+
+type valueMethod struct {
+	v     reflect.Value
+	index int
+}
+
+var (
+	valueMap = make(map[interface{}]valueMethod)
+)
+
+type wraper struct {
+}
+
+func (w wraper) IOs() string {
+	v := valueMap[w]
+	r := MethodByType(v.v.Type(), v.index).Func.Call([]reflect.Value{v.v})
+	return r[0].String()
+}
+
+func TestTypeMethod(t *testing.T) {
+	fs := []reflect.StructField{
+		reflect.StructField{Name: "X", Type: reflect.TypeOf(0)},
+		reflect.StructField{Name: "Y", Type: reflect.TypeOf(0)},
+	}
+	typ := NamedStructOf("main", "Point", fs)
 	mtyp := reflect.FuncOf([]reflect.Type{intTyp}, []reflect.Type{strTyp}, false)
 	mfn := reflect.MakeFunc(mtyp, func(args []reflect.Value) []reflect.Value {
-		log.Println("call func --->", args[0], args[1])
-		return []reflect.Value{reflect.ValueOf("Hello")}
+		info := fmt.Sprintf("info:%v-%v", args[0], args[1])
+		return []reflect.Value{reflect.ValueOf(info)}
 	})
 	nt := MethodOf(typ, []reflect.Method{
 		reflect.Method{
@@ -139,111 +204,12 @@ func TestMethod(t *testing.T) {
 			Func: mfn,
 		},
 	})
-	t.Log(nt.NumField(), nt.NumMethod())
 	m := MethodByType(nt, 0)
 	v := reflect.New(nt).Elem()
 	v.Field(0).SetInt(100)
 	v.Field(1).SetInt(200)
-	log.Println("funcType:", m.Func.Type(), m.Type)
 	r := m.Func.Call([]reflect.Value{v, reflect.ValueOf(300)})
-	t.Log(r)
-	//log.Println("--->", v.Interface())
-}
-
-func _TestMe(t *testing.T) {
-	//t.Log("Test")
-	// _t := reflect.TypeOf((*Point)(nil)).Elem()
-	// //totype(_t).kind |= kindDirectIface
-	// _v := reflect.New(_t).Elem()
-	// _m := _t.Method(0)
-	// _m2 := _v.Method(0)
-	// log.Print("--->", _v, _m.Type, tovalue(&_m2).flag, totype(_t).kind)
-	// mm := totype(_t).exportedMethods()[0]
-	// //_m2.Call(nil)
-	// //return
-	// styp := reflect.TypeOf("")
-	// mtyp := reflect.FuncOf(nil, []reflect.Type{styp}, false)
-	// mfn := reflect.MakeFunc(mtyp, func(args []reflect.Value) []reflect.Value {
-	// 	log.Println("-->", args)
-	// 	return nil
-	// })
-	// typ := makeMethod([]reflect.Method{
-	// 	reflect.Method{
-	// 		Name: "String",
-	// 		Type: mtyp,
-	// 		Func: mfn,
-	// 	},
-	// })
-	// rt := (*rtype)(unsafe.Pointer(typ))
-	// //rt.kind |= kindDirectIface
-	// setTypeName(rt, "main", "Point")
-	// mtyp = reflect.FuncOf([]reflect.Type{toType(rt)}, []reflect.Type{styp}, false)
-	// totype(mtyp).kind |= kindDirectIface
-	// //	totype(mtyp).kind |= flagMethod
-	// ms := typ.exportedMethods()
-	// ms[0].name = resolveReflectName(newName("String", "", true))
-	// //ms[0].mtyp = resolveReflectType(totype(mtyp))
-	// mfn = reflect.MakeFunc(mtyp, func(args []reflect.Value) []reflect.Value {
-	// 	log.Println("===>", args)
-	// 	return []reflect.Value{reflect.ValueOf("Hello")}
-	// })
-	// //tovalue(&mfn).flag |= flagMethod
-	// ptr := unsafe.Pointer(tovalue(&mfn).ptr)
-	// ptr = totype(_t).textOff(mm.ifn)
-	// //memmove(tovalue(&mfn).ptr, totype(_t).textOff(mm.ifn), 8)
-	// memmove(unsafe.Pointer(&ptr), unsafe.Pointer(&tovalue(&mfn).ptr), 16)
-
-	// //*(*unsafe.Pointer)(unsafe.Pointer(ptr)) = ptr
-	// //ptr = *(*unsafe.Pointer)(ptr)
-
-	// _ = mm
-	// //ptr = unsafe.Pointer(&ptr)          //*(*unsafe.Pointer)(&ptr)
-	// ms[0].ifn = resolveReflectText(ptr) //tovalue(&mfn).ptr)
-	// ms[0].tfn = resolveReflectText(ptr) //tovalue(&mfn).ptr)
-
-	// log.Println(typ, typ.Kind(), typ.NumMethod())
-	// //v := reflect.New(toType(rt)).Elem()
-	// //log.Println(v, v.NumMethod())
-	// m := typ.Method(0)
-	// log.Println(tovalue(&m.Func).flag, uint16(reflect.Func), flagMethod)
-	// //tovalue(&m.Func).flag |= flagMethod
-	// log.Println(tovalue(&m.Func).flag)
-
-	// mv := tovalue(&m.Func)
-	// //tovalue(&m.Func).flag |= flagIndir
-	// v := reflect.New(toType(rt)).Elem()
-	// // m.Func.Call([]reflect.Value{v})
-
-	// // return
-	// //m2 := v.Method(0)
-	// //tovalue(&m2).flag |= flagIndir
-	// // log.Println("-->m2", tovalue(&m2).flag)
-	// // tovalue(&m2).ptr = *(*unsafe.Pointer)(tovalue(&m2).ptr)
-	// // m2.Call(nil)
-	// log.Println(v)
-	return
-
-	//log.Println("new", v)
-	// m.Func.Call([]reflect.Value{v})
-	// //m2.Func.Call([]reflect.Value{v})
-	// log.Println("--->", unsafe.Pointer(m.Func.Pointer()))
-	// log.Println("--->", tovalue(&mfn).ptr, mv.ptr, *(*unsafe.Pointer)(mv.ptr))
-	//m.Func.Call(nil)
-	//log.Println("-->", tovalue(m.Func).flag&flagIndir)
-	//tovalue(m.Func).flag |= flagIndir
-	// tovalue(m).flag &= ^flagMethod
-	// dst := tovalue(m.Func).typ
-	// src := tovalue(mfn).typ
-	// copyType(dst, src)
-	// d := (*funcType)(unsafe.Pointer(dst))
-	// s := (*funcType)(unsafe.Pointer(src))
-	// d.inCount = s.inCount
-	// d.outCount = s.outCount
-
-	//log.Println(m.Func.Pointer(), mfn.Pointer())
-	//m.Func.Call([]reflect.Value{v})
-	//m.Call(nil)
-	//mfn.Call(nil)
-	//log.Println(m)
-	//log.Println(mfn.Type())
+	if len(r) != 1 || r[0].String() != "info:{100 200}-300" {
+		t.Fatal("bad method call", r)
+	}
 }
