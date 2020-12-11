@@ -50,7 +50,10 @@ func MethodOf(styp reflect.Type, ms []reflect.Method) reflect.Type {
 	typ := toType(rt)
 
 	// update receiver type
-	for _, m := range ms {
+	wt := reflect.TypeOf((*wrapper)(nil)).Elem()
+	vt := totype(wt)
+	var infos []methodInfo
+	for i, m := range ms {
 		mtyp := m.Func.Type()
 		var in []reflect.Type
 		in = append(in, typ)
@@ -61,26 +64,63 @@ func MethodOf(styp reflect.Type, ms []reflect.Method) reflect.Type {
 		for i := 0; i < mtyp.NumOut(); i++ {
 			out = append(out, mtyp.Out(i))
 		}
+		// rewrite tfn
 		ntyp := reflect.FuncOf(in, out, false)
 		funcImpl := (*makeFuncImpl)(tovalue(&m.Func).ptr)
 		funcImpl.ftyp = (*funcType)(unsafe.Pointer(totype(ntyp)))
-	}
-	// wrapper method ifn
-	// for _, m := range methods {
-	// 	w := wrapper{}
-	// 	vw := reflect.ValueOf(w)
-	// 	vt := tovalue(&vw).typ
-	// 	wm, _ := vw.Type().MethodByName("I2")
 
-	// 	m0 := vt.exportedMethods()[wm.Index]
-	// 	m.ifn = resolveReflectText(vt.textOff(m0.ifn))
-	// 	wrapperMap[w] = wrapperMethod{receiver: v, method: MethodByType(nt, 0)}
+		// rewrite ifn
+		var inFields []reflect.StructField
+		for i := 1; i < len(in); i++ {
+			inFields = append(inFields, reflect.StructField{
+				Name: fmt.Sprintf("Arg%v", i),
+				Type: in[i],
+			})
+		}
+		inTyp := reflect.StructOf(inFields)
+		var outFields []reflect.StructField
+		for i := 0; i < len(out); i++ {
+			outFields = append(outFields, reflect.StructField{
+				Name: fmt.Sprintf("Out%v", i),
+				Type: out[i],
+			})
+		}
+		outTyp := reflect.StructOf(outFields)
+		infos = append(infos, methodInfo{i, inTyp, outTyp})
+
+		log.Println("-->", totype(inTyp).size)
+
+		//methods[i].tfn = resolveReflectText(vt.textOff(m0.tfn))
+	}
+	// var infos []methodInfo
+	// for _, m := range methods {
+	// 	wt := reflect.TypeOf((*wrapper)(nil)).Elem()
+	// 	rt := totype(wt)
+
+	// 	// w := wrapper{}
+	// 	// vw := reflect.ValueOf(w)
+	// 	// vt := tovalue(&vw).typ
+	// 	// wm, _ := vw.Type().MethodByName("I2")
+
+	// 	// m0 := vt.exportedMethods()[wm.Index]
+	// 	// m.ifn = resolveReflectText(vt.textOff(m0.ifn))
+	// 	// wrapperMap[w] = wrapperMethod{receiver: v, method: MethodByType(nt, 0)}
 	// }
 
 	nt := &Named{Name: styp.Name(), PkgPath: styp.PkgPath(), Type: typ, Kind: TkStruct}
 	ntypeMap[typ] = nt
 
 	return typ
+}
+
+var (
+	typMap = make(map[reflect.Type][]methodInfo)
+)
+
+type methodInfo struct {
+	index  int
+	inTyp  reflect.Type
+	outTyp reflect.Type
 }
 
 func MethodByType(typ reflect.Type, index int) reflect.Method {
@@ -111,6 +151,17 @@ var (
 	strTyp  = reflect.TypeOf("")
 	iType   = reflect.TypeOf((*interface{})(nil)).Elem()
 )
+
+func New(typ reflect.Type) reflect.Value {
+	return reflect.New(typ)
+}
+
+func fixMethod(v reflect.Value) bool {
+	typ, ok := ToNamed(v.Type())
+	if !ok {
+		return
+	}
+}
 
 // func _TestValueMethod(t *testing.T) {
 // 	fs := []reflect.StructField{
@@ -213,7 +264,7 @@ func TestValueMethod2(t *testing.T) {
 	//log.Println()
 	p0 := (uintptr)(unsafe.Pointer(&w))
 	log.Println(&p0)
-	//wrapperMap[unsafe.Pointer(&w.data)] = wrapperMethod{receiver: v, method: MethodByType(nt, 0)}
+	wrapperMap[w] = wrapperMethod{receiver: v, method: MethodByType(nt, 0)}
 
 	r := v.Method(0).Call([]reflect.Value{reflect.ValueOf(false), reflect.ValueOf(1024)})
 	if len(r) != 1 || r[0].String() != "info:{100 200}" {
