@@ -52,6 +52,7 @@ func MethodOf(styp reflect.Type, ms []reflect.Method) reflect.Type {
 	// update receiver type
 	wt := reflect.TypeOf((*wrapper)(nil)).Elem()
 	vt := totype(wt)
+	vm := vt.exportedMethods()
 	var infos []methodInfo
 	for i, m := range ms {
 		mtyp := m.Func.Type()
@@ -86,12 +87,17 @@ func MethodOf(styp reflect.Type, ms []reflect.Method) reflect.Type {
 			})
 		}
 		outTyp := reflect.StructOf(outFields)
-		infos = append(infos, methodInfo{i, inTyp, outTyp})
-
-		log.Println("-->", totype(inTyp).size)
-
-		//methods[i].tfn = resolveReflectText(vt.textOff(m0.tfn))
+		sz := totype(inTyp).size
+		index := -1
+		if fm, ok := wt.MethodByName(fmt.Sprintf("I%v", sz)); ok {
+			index = fm.Index
+			methods[i].ifn = resolveReflectText(vt.textOff(vm[m.Index].ifn))
+		} else {
+			log.Printf("warning cannot found wrapper method I%v\n", sz)
+		}
+		infos = append(infos, methodInfo{index, inTyp, outTyp})
 	}
+	typInfoMap[typ] = infos
 	// var infos []methodInfo
 	// for _, m := range methods {
 	// 	wt := reflect.TypeOf((*wrapper)(nil)).Elem()
@@ -114,7 +120,7 @@ func MethodOf(styp reflect.Type, ms []reflect.Method) reflect.Type {
 }
 
 var (
-	typMap = make(map[reflect.Type][]methodInfo)
+	typInfoMap = make(map[reflect.Type][]methodInfo)
 )
 
 type methodInfo struct {
@@ -153,14 +159,26 @@ var (
 )
 
 func New(typ reflect.Type) reflect.Value {
-	return reflect.New(typ)
+	v := reflect.New(typ)
+	return v
+}
+
+func toElem(typ reflect.Type) reflect.Type {
+	if typ.Kind() == reflect.Ptr {
+		return typ.Elem()
+	}
+	return typ
 }
 
 func fixMethod(v reflect.Value) bool {
-	typ, ok := ToNamed(v.Type())
-	if !ok {
-		return
+	if typ, ok := ToNamed(v.Type()); ok {
+		if infos, ok := typInfoMap[typ.Type]; ok {
+			for _, info := range infos {
+				log.Println(info)
+			}
+		}
 	}
+	return false
 }
 
 // func _TestValueMethod(t *testing.T) {
@@ -214,7 +232,36 @@ func fixMethod(v reflect.Value) bool {
 // 	t.Log("call String() string", v)
 // }
 
-func TestValueMethod2(t *testing.T) {
+func TestValueMethod(t *testing.T) {
+	fs := []reflect.StructField{
+		reflect.StructField{Name: "X", Type: reflect.TypeOf(0)},
+		reflect.StructField{Name: "Y", Type: reflect.TypeOf(0)},
+	}
+	typ := NamedStructOf("main", "Point", fs)
+	mtyp := reflect.FuncOf([]reflect.Type{boolTyp, intTyp}, []reflect.Type{strTyp, intTyp}, false)
+	mfn := reflect.MakeFunc(mtyp, func(args []reflect.Value) []reflect.Value {
+		for _, arg := range args {
+			log.Println("->", arg)
+		}
+		info := fmt.Sprintf("info:{%v %v}", args[0].Field(0), args[0].Field(1))
+		return []reflect.Value{reflect.ValueOf(info), reflect.ValueOf(-1024)}
+	})
+	nt := MethodOf(typ, []reflect.Method{
+		reflect.Method{
+			Name: "String",
+			Type: mtyp,
+			Func: mfn,
+		},
+	})
+	v := New(nt).Elem()
+	v.Field(0).SetInt(100)
+	v.Field(1).SetInt(200)
+	fixMethod(v)
+	v.Method(0).Call([]reflect.Value{reflect.ValueOf(false), reflect.ValueOf(100)})
+	log.Println(v)
+}
+
+func _TestValueMethod2(t *testing.T) {
 	fs := []reflect.StructField{
 		reflect.StructField{Name: "X", Type: reflect.TypeOf(0)},
 		reflect.StructField{Name: "Y", Type: reflect.TypeOf(0)},

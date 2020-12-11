@@ -27,12 +27,16 @@ type wrapper struct {
 }
 
 func (w wrapper) call(p []byte) []byte {
+	log.Println("---------------", p)
+	return nil
+
 	type M struct {
-		X int
+		X bool
 		Y int
 	}
 	p0 := (uintptr)(unsafe.Pointer(&w))
 	log.Println("-->", *(*M)(unsafe.Pointer(&w)), &p0)
+	return nil
 	v, ok := wrapperMap[&w]
 	if !ok {
 		log.Fatalf("invalid wrapper:%v\n", w)
@@ -82,18 +86,18 @@ func (w wrapper) I0() []byte {
 	return w.call(nil)
 }
 
-func (w wrapper) I1(p [8]byte) []byte {
+func (w wrapper) I8(p [8]byte) []byte {
 	return w.call(p[:])
 }
 
-func (w wrapper) I2(p [16]byte) []byte {
+func (w wrapper) I16(p [16]byte) []byte {
 	return w.call(p[:])
 }
 
-func (w wrapper) I3(p [24]byte) []byte {
+func (w wrapper) I24(p [24]byte) []byte {
 	return w.call(p[:])
 }
 
-func (w wrapper) I4(p [32]byte) []byte {
+func (w wrapper) I32(p [32]byte) []byte {
 	return w.call(p[:])
 }
