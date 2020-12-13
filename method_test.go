@@ -89,14 +89,12 @@ func MethodOf(styp reflect.Type, ms []reflect.Method) reflect.Type {
 		}
 		outTyp := reflect.StructOf(outFields)
 		sz := totype(inTyp).size
-		index := -1
 		if fm, ok := wt.MethodByName(fmt.Sprintf("I%v_%v", i, sz)); ok {
-			index = fm.Index
-			em[i].ifn = resolveReflectText(vt.textOff(vm[index].ifn))
+			em[i].ifn = resolveReflectText(vt.textOff(vm[fm.Index].ifn))
 		} else {
 			log.Printf("warning cannot found wrapper method wrapper.I%v_%v\n", i, sz)
 		}
-		infos = append(infos, &methodInfo{index, inTyp, outTyp})
+		infos = append(infos, &methodInfo{i, inTyp, outTyp})
 	}
 	typInfoMap[typ] = infos
 	log.Println("---> typMap", typ, typInfoMap[typ])
@@ -182,7 +180,7 @@ func _TestValueMethod1(t *testing.T) {
 	v.Field(1).SetInt(200)
 
 	//wrapperMap[w] = wrapperMethod{receiver: v, nt.Method(0)}
-
+	log.Println("call v", v)
 	r := v.Method(0).Call(nil)
 	if len(r) != 1 || r[0].String() != "info:{100 200}" {
 		t.Fatal("bad method call", r[0].Bytes()[0])

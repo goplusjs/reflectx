@@ -1,21 +1,9 @@
 package reflectx
 
 import (
-	"fmt"
 	"log"
 	"reflect"
 	"unsafe"
-)
-
-type wrapperMethod struct {
-	receiver reflect.Value  // receiver as first argument
-	method   reflect.Method // type call method
-	inTyp    reflect.Type   // input struct without receiver
-	outTyp   reflect.Type   // output struct
-}
-
-var (
-	wrapperMap = make(map[interface{}]wrapperMethod)
 )
 
 type wrapper struct {
@@ -23,7 +11,8 @@ type wrapper struct {
 }
 
 func (w wrapper) call(i int, p []byte) []byte {
-	typ, ok := ptrTypeMap[unsafe.Pointer(w.data)]
+	ptr := unsafe.Pointer(w.data)
+	typ, ok := ptrTypeMap[ptr]
 	if !ok {
 		log.Println("cannot found ptr type", w.data)
 		return nil
@@ -33,65 +22,20 @@ func (w wrapper) call(i int, p []byte) []byte {
 		log.Println("cannot found type info", typ)
 	}
 	info := infos[i]
-	method := typ.Method(info.index)
-	inCount := method.Type.NumIn()
+	method := MethodByType(typ, info.index)
 	var in []reflect.Value
-	inArgs := reflect.NewAt(info.inTyp, unsafe.Pointer(&p[0])).Elem()
-	in[0] = reflect.NewAt()
-	for i := 1; i < inCount; i++ {
-		in[i] = inArgs.Field(i - 1)
-	}
-	r := v.method.Func.Call(in)
-	if len(r) > 0 {
-		out := reflect.New(outTyp).Elem()
-		for i, v := range r {
-			out.Field(i).Set(v)
+	inCount := method.Type.NumIn()
+	if inCount > 0 {
+		in = make([]reflect.Value, inCount, inCount)
+		inArgs := reflect.NewAt(info.inTyp, unsafe.Pointer(&p[0])).Elem()
+		in[0] = reflect.NewAt(typ, ptr).Elem()
+		for i := 1; i < inCount; i++ {
+			in[i] = inArgs.Field(i - 1)
 		}
-		return *(*[]byte)(tovalue(&out).ptr)
 	}
-
-	log.Println(typ, infos)
-	ptr := unsafe.Pointer(w.data)
-	log.Println("--->", ptr, p) // &w.data[0])
-	return nil
-
-	v, ok := wrapperMap[w]
-	if !ok {
-		log.Fatalf("invalid wrapper:%v\n", w)
-		return nil
-	}
-	//	var v wrapperMethod
-
-	log.Println("--->", unsafe.Pointer(&w), tovalue(&v.receiver).ptr)
-
-	inCount := v.method.Type.NumIn()
-	in := make([]reflect.Value, inCount, inCount)
-	var inFields []reflect.StructField
-	for i := 1; i < inCount; i++ {
-		typ := v.method.Type.In(i)
-		inFields = append(inFields, reflect.StructField{
-			Name: fmt.Sprintf("Arg%v", i),
-			Type: typ,
-		})
-	}
-	inTyp := reflect.StructOf(inFields)
-	var outFields []reflect.StructField
-	for i := 0; i < v.method.Type.NumOut(); i++ {
-		typ := v.method.Type.Out(i)
-		outFields = append(outFields, reflect.StructField{
-			Name: fmt.Sprintf("Out%v", i),
-			Type: typ,
-		})
-	}
-	outTyp := reflect.StructOf(outFields)
-	inArgs := reflect.NewAt(inTyp, unsafe.Pointer(&p[0])).Elem()
-	in[0] = v.receiver
-	for i := 1; i < inCount; i++ {
-		in[i] = inArgs.Field(i - 1)
-	}
-	r := v.method.Func.Call(in)
+	r := method.Func.Call(in)
 	if len(r) > 0 {
-		out := reflect.New(outTyp).Elem()
+		out := reflect.New(info.outTyp).Elem()
 		for i, v := range r {
 			out.Field(i).Set(v)
 		}
