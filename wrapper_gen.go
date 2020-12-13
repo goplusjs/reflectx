@@ -25,7 +25,7 @@ var templ = `func (w wrapper) I$index_$bytes(p [$bytes]byte) []byte {
 
 const (
 	max_index = 128
-	max_bytes = 1024
+	max_bytes = 128
 )
 
 func main() {
