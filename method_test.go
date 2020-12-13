@@ -220,33 +220,51 @@ func _TestValueMethod1(t *testing.T) {
 func TestValueMethod2(t *testing.T) {
 	fs := []reflect.StructField{
 		reflect.StructField{Name: "X", Type: reflect.TypeOf(0)},
-		reflect.StructField{Name: "Y", Type: reflect.TypeOf(0)},
+		reflect.StructField{Name: "Y", Type: reflect.TypeOf("")},
 	}
 	typ := NamedStructOf("main", "Point", fs)
-	mtyp := reflect.FuncOf([]reflect.Type{boolTyp, intTyp}, []reflect.Type{strTyp, intTyp}, false)
-	mfn := reflect.MakeFunc(mtyp, func(args []reflect.Value) []reflect.Value {
-		log.Println("---> call args", args)
-		info := "strng"
+	tyString := reflect.FuncOf(nil, []reflect.Type{strTyp}, false)
+	fnString := reflect.MakeFunc(tyString, func(args []reflect.Value) []reflect.Value {
+		log.Println("---> call String args", args)
+		info := fmt.Sprintf("%v-%v", args[0].Field(0), args[0].Field(1))
 		//info := fmt.Sprintf("info:{%v %v}", args[0].Field(0), args[0].Field(1))
-		return []reflect.Value{reflect.ValueOf(info), reflect.ValueOf(-1024)}
+		return []reflect.Value{reflect.ValueOf(info) /*, reflect.ValueOf(-1024)*/}
+	})
+	tyTest := reflect.FuncOf([]reflect.Type{intTyp}, []reflect.Type{strTyp}, false)
+	fnTest := reflect.MakeFunc(tyTest, func(args []reflect.Value) []reflect.Value {
+		log.Println("---> call Test args", args)
+		info := fmt.Sprintf("%v-%v-%v", args[1], args[0].Field(0), args[0].Field(1))
+		//info := fmt.Sprintf("info:{%v %v}", args[0].Field(0), args[0].Field(1))
+		return []reflect.Value{reflect.ValueOf(info) /*, reflect.ValueOf(-1024)*/}
 	})
 
 	nt := MethodOf(typ, []reflect.Method{
 		reflect.Method{
 			Name: "String",
-			Type: mtyp,
-			Func: mfn,
+			Type: tyString,
+			Func: fnString,
+		},
+		reflect.Method{
+			Name: "Test",
+			Type: tyTest,
+			Func: fnTest,
 		},
 	})
 	v := New(nt).Elem()
 	v.Field(0).SetInt(100)
-	v.Field(1).SetInt(200)
+	v.Field(1).SetString("hello")
 
-	r := v.Method(0).Call([]reflect.Value{reflect.ValueOf(false), reflect.ValueOf(1024)})
-	if len(r) != 1 || r[0].String() != "info:{100 200}" {
-		t.Fatal("bad method call", r[0], r[1])
-	}
-	t.Log("call String() string", r, v)
+	MethodByType(nt, 0).Func.Call([]reflect.Value{v})
+
+	r := v.Method(0).Call(nil)
+	// if len(r) != 1 || r[0].String() != "info:{100 200}" {
+	// 	t.Fatal("bad method call", r[0], r[1])
+	// }
+	t.Log("call String() string", r)
+	log.Println(r)
+
+	r = v.Method(1).Call([]reflect.Value{reflect.ValueOf(100)})
+	log.Println(r)
 }
 
 func New(typ reflect.Type) reflect.Value {

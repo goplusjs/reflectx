@@ -25,10 +25,10 @@ func (w wrapper) call(i int, p []byte) []byte {
 	method := MethodByType(typ, info.index)
 	var in []reflect.Value
 	inCount := method.Type.NumIn()
-	if inCount > 0 {
-		in = make([]reflect.Value, inCount, inCount)
+	in = make([]reflect.Value, inCount, inCount)
+	in[0] = reflect.NewAt(typ, ptr).Elem()
+	if inCount > 1 {
 		inArgs := reflect.NewAt(info.inTyp, unsafe.Pointer(&p[0])).Elem()
-		in[0] = reflect.NewAt(typ, ptr).Elem()
 		for i := 1; i < inCount; i++ {
 			in[i] = inArgs.Field(i - 1)
 		}
@@ -44,22 +44,26 @@ func (w wrapper) call(i int, p []byte) []byte {
 	return nil
 }
 
-func (w wrapper) I0() []byte {
-	return w.call(0, nil)
-}
+// func (w wrapper) I0_0() []byte {
+// 	return w.call(0, nil)
+// }
 
-func (w wrapper) I0_8(p [8]byte) []byte {
-	return w.call(0, p[:])
-}
+// func (w wrapper) I0_8(p [8]byte) []byte {
+// 	return w.call(0, p[:])
+// }
 
-func (w wrapper) I0_16(p [16]byte) []byte {
-	return w.call(0, p[:])
-}
+// func (w wrapper) I1_8(p [8]byte) []byte {
+// 	return w.call(1, p[:])
+// }
 
-func (w wrapper) I0_24(p [24]byte) []byte {
-	return w.call(0, p[:])
-}
+// func (w wrapper) I0_16(p [16]byte) []byte {
+// 	return w.call(0, p[:])
+// }
 
-func (w wrapper) I0_32(p [32]byte) []byte {
-	return w.call(0, p[:])
-}
+// func (w wrapper) I0_24(p [24]byte) []byte {
+// 	return w.call(0, p[:])
+// }
+
+// func (w wrapper) I0_32(p [32]byte) []byte {
+// 	return w.call(0, p[:])
+// }
