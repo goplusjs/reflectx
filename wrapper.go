@@ -59,27 +59,3 @@ func (w wrapper) call(i int, p []byte) []byte {
 	}
 	return nil
 }
-
-// func (w wrapper) I0_0() []byte {
-// 	return w.call(0, nil)
-// }
-
-// func (w wrapper) I0_8(p [8]byte) []byte {
-// 	return w.call(0, p[:])
-// }
-
-// func (w wrapper) I1_8(p [8]byte) []byte {
-// 	return w.call(1, p[:])
-// }
-
-// func (w wrapper) I0_16(p [16]byte) []byte {
-// 	return w.call(0, p[:])
-// }
-
-// func (w wrapper) I0_24(p [24]byte) []byte {
-// 	return w.call(0, p[:])
-// }
-
-// func (w wrapper) I0_32(p [32]byte) []byte {
-// 	return w.call(0, p[:])
-// }
