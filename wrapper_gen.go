@@ -16,10 +16,16 @@ var head = `package reflectx
 var templ_0 = `func (w wrapper) I$index_$bytes() []byte {
 	return w.call($index, nil)
 }
+func (w wrapper) N$index_$bytes() {
+	w.call($index, nil)
+}
 `
 
 var templ = `func (w wrapper) I$index_$bytes(p [$bytes]byte) []byte {
 	return w.call($index, p[:])
+}
+func (w wrapper) N$index_$bytes(p [$bytes]byte) {
+	w.call($index, p[:])
 }
 `
 

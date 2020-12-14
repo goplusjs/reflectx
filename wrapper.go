@@ -10,12 +10,28 @@ type wrapper struct {
 	data unsafe.Pointer
 }
 
+func tryFoundType(ptr unsafe.Pointer) reflect.Type {
+	for p, typ := range ptrTypeMap {
+		v1 := reflect.NewAt(typ, p).Elem()
+		v2 := reflect.NewAt(typ, ptr).Elem()
+		if reflect.DeepEqual(v1.Interface(), v2.Interface()) {
+			return typ
+		}
+	}
+	return nil
+}
+
 func (w wrapper) call(i int, p []byte) []byte {
 	ptr := unsafe.Pointer(w.data)
 	typ, ok := ptrTypeMap[ptr]
 	if !ok {
-		log.Println("cannot found ptr type", w.data)
-		return nil
+		if t := tryFoundType(ptr); t != nil {
+			log.Printf("warring, guess type %v by %v\n", t, ptr)
+			typ = t
+		} else {
+			log.Println("cannot found ptr type", w.data)
+			return nil
+		}
 	}
 	infos, ok := typInfoMap[typ]
 	if !ok {

@@ -1,5 +1,3 @@
-// +build ignore
-
 package reflectx
 
 import (
@@ -12,6 +10,12 @@ import (
 // memmove copies size bytes to dst from src. No write barriers are used.
 //go:linkname memmove reflect.memmove
 func memmove(dst, src unsafe.Pointer, size uintptr)
+
+//go:linkname storeRcvr reflect.storeRcvr
+func storeRcvr(v reflect.Value, p unsafe.Pointer)
+
+//go:linkname unsafe_New reflect.unsafe_New
+func unsafe_New(*rtype) unsafe.Pointer
 
 func MethodOf(styp reflect.Type, ms []reflect.Method) reflect.Type {
 	var methods []method
@@ -90,14 +94,22 @@ func MethodOf(styp reflect.Type, ms []reflect.Method) reflect.Type {
 		}
 		outTyp := reflect.StructOf(outFields)
 		sz := totype(inTyp).size
-		if fm, ok := wt.MethodByName(fmt.Sprintf("I%v_%v", i, sz)); ok {
+		var fnName string
+		if len(out) > 0 {
+			fnName = fmt.Sprintf("I%v_%v", i, sz)
+		} else {
+			fnName = fmt.Sprintf("N%v_%v", i, sz)
+		}
+		log.Println("--->", m.Name, fnName)
+		if fm, ok := wt.MethodByName(fnName); ok {
 			em[i].ifn = resolveReflectText(vt.textOff(vm[fm.Index].ifn))
 		} else {
-			log.Printf("warning cannot found wrapper method wrapper.I%v_%v\n", i, sz)
+			log.Printf("warning cannot found wrapper method wrapper.%v\n", fnName)
 		}
 		infos = append(infos, &methodInfo{i, inTyp, outTyp})
 	}
 	typInfoMap[typ] = infos
+	log.Println("---> typMap", typ, typInfoMap[typ])
 
 	nt := &Named{Name: styp.Name(), PkgPath: styp.PkgPath(), Type: typ, Kind: TkStruct}
 	ntypeMap[typ] = nt
@@ -107,7 +119,7 @@ func MethodOf(styp reflect.Type, ms []reflect.Method) reflect.Type {
 
 var (
 	typInfoMap = make(map[reflect.Type][]*methodInfo)
-	ptrTypeMap = make(map[uintptr]reflect.Type)
+	ptrTypeMap = make(map[unsafe.Pointer]reflect.Type)
 )
 
 type methodInfo struct {
@@ -140,6 +152,7 @@ type bitVector struct {
 func New(typ reflect.Type) reflect.Value {
 	v := reflect.New(typ)
 	if IsNamed(typ) {
+		log.Println("new", typInfoMap[typ])
 		storeValue(v)
 	}
 	return v
@@ -153,7 +166,5 @@ func toElem(typ reflect.Type) reflect.Type {
 }
 
 func storeValue(v reflect.Value) {
-	ptrTypeMap[uintptr(tovalue(&v).ptr)] = toElem(v.Type())
-	v0 := v.Elem().Field(0)
-	log.Println("store", ptrTypeMap, uintptr(tovalue(&v0).ptr))
+	ptrTypeMap[tovalue(&v).ptr] = toElem(v.Type())
 }
