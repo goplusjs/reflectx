@@ -100,7 +100,6 @@ func MethodOf(styp reflect.Type, ms []reflect.Method) reflect.Type {
 		} else {
 			fnName = fmt.Sprintf("N%v_%v", i, sz)
 		}
-		log.Println("--->", m.Name, fnName)
 		if fm, ok := wt.MethodByName(fnName); ok {
 			em[i].ifn = resolveReflectText(vt.textOff(vm[fm.Index].ifn))
 		} else {
@@ -109,7 +108,6 @@ func MethodOf(styp reflect.Type, ms []reflect.Method) reflect.Type {
 		infos = append(infos, &methodInfo{i, inTyp, outTyp})
 	}
 	typInfoMap[typ] = infos
-	log.Println("---> typMap", typ, typInfoMap[typ])
 
 	nt := &Named{Name: styp.Name(), PkgPath: styp.PkgPath(), Type: typ, Kind: TkStruct}
 	ntypeMap[typ] = nt
