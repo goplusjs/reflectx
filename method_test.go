@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"reflect"
+	"runtime"
 	"testing"
 	"unsafe"
 )
@@ -31,8 +32,31 @@ func MyTest(this unsafe.Pointer, p [8]byte) string {
 }
 
 var (
-	saved = make(map[interface{}]bool)
+	saved    = make(map[interface{}]bool)
+	entryMap = make(map[uintptr]reflect.Type)
 )
+
+type A struct {
+	i int
+}
+
+func (a A) fn(this unsafe.Pointer) string {
+	pc, _, _, ok := runtime.Caller(0)
+	if ok {
+		//		typ := entryMap[runtime.FuncForPC(pc).Entry()]
+		log.Println("---> entry1", pc)
+		//		v := reflect.NewAt(typ, this).Elem()
+		//		log.Println("----> entry2 ", v.Field(0), v.Field(1))
+	}
+	//log.Println("--->", a.i)
+	return "hello1"
+}
+
+func NewFunc() func(this unsafe.Pointer) string {
+	a := A{index}
+	index++
+	return a.fn
+}
 
 func TestValueMethod2(t *testing.T) {
 	fs := []reflect.StructField{
@@ -83,52 +107,36 @@ func TestValueMethod2(t *testing.T) {
 	v0 := New(nt)
 	v := v0.Elem()
 	v.Field(0).SetInt(1)
-	v.Field(1).SetInt(1)
+	v.Field(1).SetInt(100)
 
 	rt := totype(nt)
-
-	wp := My{}
-	fn := reflect.ValueOf(wp.Test)
-	wp2 := My{}
-	fn2 := reflect.ValueOf(wp2.Test)
-	log.Println("vvv", tovalue(&v).ptr, fn.Type())
-	log.Println("www", unsafe.Pointer(&wp), unsafe.Pointer(&wp2), unsafe.Pointer(&wp.id), unsafe.Pointer(&wp2.id))
-	log.Println(fn.Pointer(), fn2.Pointer())
-	myTest := func(this unsafe.Pointer, p [8]byte) string {
-		log.Println("---> mytest2", this, *(*int)(unsafe.Pointer(&p[0])))
+	log.Println("==>", tovalue(&v).ptr)
+	myTest := func(this unsafe.Pointer) string {
+		pc, _, _, ok := runtime.Caller(0)
+		if ok {
+			typ := entryMap[runtime.FuncForPC(pc).Entry()]
+			log.Println("---> entry1", typ)
+			v := reflect.NewAt(typ, this).Elem()
+			log.Println("----> entry2 ", v.Field(0), v.Field(1))
+		}
+		//vp := reflect.NewAt(nt, this)
+		//log.Println("--->", vp.Kind())
+		// if typ, ok := ptrTypeMap[this]; ok {
+		// 	log.Println("---->", typ)
+		// }
+		//log.Println("---> typ", ptrTypeMap, fnTest, index)
+		//	v := reflect.NewAt(nt, this).Elem()
+		//	log.Println(v.Field(0), v.Field(1))
 		return "hello"
 	}
+	_ = myTest
+	fn := reflect.ValueOf(icall(0, 0))
+	entryMap[fn.Pointer()] = nt
 
-	fn = reflect.ValueOf(myTest)
-
-	rt.exportedMethods()[1].ifn = resolveReflectText(unsafe.Pointer(fn.Pointer()))
-	r0 := v.Method(1).Call([]reflect.Value{reflect.ValueOf(100)})
-	log.Println("---> return1", r0)
-
-	//	var check bool
-	// var entry uintptr
-	rfn := reflect.MakeFunc(fn.Type(), func(args []reflect.Value) []reflect.Value {
-		log.Println("---> make func")
-		// if !check {
-		// 	pc, _, _, ok := runtime.Caller(0)
-		// 	if ok {
-		// 		entry = runtime.FuncForPC(pc).Entry()
-		// 	}
-		// }
-		return []reflect.Value{reflect.ValueOf("hello")}
-	})
-	myTest = rfn.Interface().(func(unsafe.Pointer, [8]byte) string)
-	fn = reflect.ValueOf(myTest)
-	rt.exportedMethods()[1].ifn = resolveReflectText(unsafe.Pointer(fn.Pointer()))
-	// saved[rfn] = true
-	// rfn.Call([]reflect.Value{reflect.ValueOf(unsafe.Pointer(nil)), reflect.ValueOf([8]byte{})})
-	// check = true
-	// log.Println("entry", fn.Type(), rfn.Type(), entry)
-	//rt.exportedMethods()[1].ifn = resolveReflectText(unsafe.Pointer(myTest))
-	r0 = v.Method(1).Call([]reflect.Value{reflect.ValueOf(100)})
-	log.Println("---> return2", r0)
-
-	//log.Println(v)
+	rt.exportedMethods()[0].ifn = resolveReflectText(unsafe.Pointer(fn.Pointer()))
+	r0 := v.Method(0).Call(nil)
+	v.Field(0).SetInt(-100)
+	log.Println("---> return1", r0, v)
 	return
 	MethodByType(nt, 0).Func.Call([]reflect.Value{v})
 
