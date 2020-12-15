@@ -130,7 +130,7 @@ func TestValueMethod2(t *testing.T) {
 		return "hello"
 	}
 	_ = myTest
-	fn := reflect.ValueOf(icall(0, 0))
+	fn := reflect.ValueOf(icall(0, 0, true))
 	entryMap[fn.Pointer()] = nt
 
 	rt.exportedMethods()[0].ifn = resolveReflectText(unsafe.Pointer(fn.Pointer()))
