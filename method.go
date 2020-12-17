@@ -7,15 +7,15 @@ import (
 	"unsafe"
 )
 
+var (
+	AddVerifyField  = true
+	verifyFieldType = totype(reflect.TypeOf(unsafe.Pointer(nil)))
+	verifyFieldName = "reflectx_verify"
+)
+
 // memmove copies size bytes to dst from src. No write barriers are used.
 //go:linkname memmove reflect.memmove
 func memmove(dst, src unsafe.Pointer, size uintptr)
-
-//go:linkname storeRcvr reflect.storeRcvr
-func storeRcvr(v reflect.Value, p unsafe.Pointer)
-
-//go:linkname unsafe_New reflect.unsafe_New
-func unsafe_New(*rtype) unsafe.Pointer
 
 func MethodOf(styp reflect.Type, ms []reflect.Method) reflect.Type {
 	var methods []method
@@ -48,16 +48,20 @@ func MethodOf(styp reflect.Type, ms []reflect.Method) reflect.Type {
 	st.tflag = ort.tflag
 	st.kind = ort.kind
 	st.fields = ost.fields
+	if AddVerifyField {
+		st.fields = append(st.fields, structField{
+			name: newName(verifyFieldName, "", false),
+			typ:  verifyFieldType,
+		})
+	}
+
 	st.fieldAlign = ost.fieldAlign
 	st.str = resolveReflectName(ort.nameOff(ort.str))
 
 	rt := (*rtype)(unsafe.Pointer(st))
 	typ := toType(rt)
 
-	// update receiver type
-	wt := reflect.TypeOf((*wrapper)(nil)).Elem()
-	vt := totype(wt)
-	vm := vt.exportedMethods()
+	// update receiver type, rewrite tfn&ifn
 	em := rt.exportedMethods()
 	var infos []*methodInfo
 	for i, m := range ms {
@@ -94,16 +98,11 @@ func MethodOf(styp reflect.Type, ms []reflect.Method) reflect.Type {
 		}
 		outTyp := reflect.StructOf(outFields)
 		sz := totype(inTyp).size
-		var fnName string
-		if len(out) > 0 {
-			fnName = fmt.Sprintf("I%v_%v", i, sz)
+		ifn := icall(i, int(sz), len(out) > 0)
+		if ifn == nil {
+			log.Printf("warning cannot wrapper method index:%v, size: %v\n", i, sz)
 		} else {
-			fnName = fmt.Sprintf("N%v_%v", i, sz)
-		}
-		if fm, ok := wt.MethodByName(fnName); ok {
-			em[i].ifn = resolveReflectText(vt.textOff(vm[fm.Index].ifn))
-		} else {
-			log.Printf("warning cannot found wrapper method wrapper.%v\n", fnName)
+			em[i].ifn = resolveReflectText(unsafe.Pointer(reflect.ValueOf(ifn).Pointer()))
 		}
 		infos = append(infos, &methodInfo{i, inTyp, outTyp})
 	}
@@ -139,7 +138,7 @@ type makeFuncImpl struct {
 	stack  *bitVector // ptrmap for both args and results
 	argLen uintptr    // just args
 	ftyp   *funcType
-	fn     func([]Value) []Value
+	fn     func([]reflect.Value) []reflect.Value
 }
 
 type bitVector struct {
@@ -150,7 +149,6 @@ type bitVector struct {
 func New(typ reflect.Type) reflect.Value {
 	v := reflect.New(typ)
 	if IsNamed(typ) {
-		log.Println("new", typInfoMap[typ])
 		storeValue(v)
 	}
 	return v
@@ -164,5 +162,64 @@ func toElem(typ reflect.Type) reflect.Type {
 }
 
 func storeValue(v reflect.Value) {
-	ptrTypeMap[tovalue(&v).ptr] = toElem(v.Type())
+	ptr := tovalue(&v).ptr
+	ptrTypeMap[ptr] = toElem(v.Type())
+	if AddVerifyField {
+		v := FieldByName(v.Elem(), verifyFieldName)
+		if v.IsValid() {
+			v.SetPointer(ptr)
+		}
+	}
+}
+
+func foundTypeByPtr(ptr unsafe.Pointer) reflect.Type {
+	typ, ok := ptrTypeMap[ptr]
+	if ok {
+		return typ
+	}
+	for p, typ := range ptrTypeMap {
+		v2 := reflect.NewAt(typ, ptr).Elem()
+		v1 := reflect.NewAt(typ, p).Elem()
+		if reflect.DeepEqual(v1.Interface(), v2.Interface()) {
+			if !AddVerifyField {
+				log.Printf("no verify, found type %v by %v\n", typ, ptr)
+			}
+			return typ
+		}
+	}
+	return nil
+}
+
+func icall_x(i int, this uintptr, p []byte) []byte {
+	ptr := unsafe.Pointer(this)
+	typ := foundTypeByPtr(ptr)
+	if typ == nil {
+		log.Println("cannot found ptr type", ptr)
+		return nil
+	}
+	infos, ok := typInfoMap[typ]
+	if !ok {
+		log.Println("cannot found type info", typ)
+	}
+	info := infos[i]
+	method := MethodByType(typ, info.index)
+	var in []reflect.Value
+	inCount := method.Type.NumIn()
+	in = make([]reflect.Value, inCount, inCount)
+	in[0] = reflect.NewAt(typ, ptr).Elem()
+	if inCount > 1 {
+		inArgs := reflect.NewAt(info.inTyp, unsafe.Pointer(&p[0])).Elem()
+		for i := 1; i < inCount; i++ {
+			in[i] = inArgs.Field(i - 1)
+		}
+	}
+	r := method.Func.Call(in)
+	if len(r) > 0 {
+		out := reflect.New(info.outTyp).Elem()
+		for i, v := range r {
+			out.Field(i).Set(v)
+		}
+		return *(*[]byte)(tovalue(&out).ptr)
+	}
+	return nil
 }

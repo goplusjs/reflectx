@@ -4,9 +4,7 @@ import (
 	"fmt"
 	"log"
 	"reflect"
-	"runtime"
 	"testing"
-	"unsafe"
 )
 
 var (
@@ -17,51 +15,11 @@ var (
 	iType   = reflect.TypeOf((*interface{})(nil)).Elem()
 )
 
-type My struct {
-	id unsafe.Pointer
-}
-
-func (w My) Test(this unsafe.Pointer, p [8]byte) string {
-	log.Println("---> my", this, unsafe.Pointer(&w), unsafe.Pointer(w.id), *(*int)(unsafe.Pointer(&p[0])))
-	return "hello"
-}
-
-func MyTest(this unsafe.Pointer, p [8]byte) string {
-	log.Println("---> mytest", this, *(*int)(unsafe.Pointer(&p[0])))
-	return "hello"
-}
-
-var (
-	saved    = make(map[interface{}]bool)
-	entryMap = make(map[uintptr]reflect.Type)
-)
-
-type A struct {
-	i int
-}
-
-func (a A) fn(this unsafe.Pointer) string {
-	pc, _, _, ok := runtime.Caller(0)
-	if ok {
-		//		typ := entryMap[runtime.FuncForPC(pc).Entry()]
-		log.Println("---> entry1", pc)
-		//		v := reflect.NewAt(typ, this).Elem()
-		//		log.Println("----> entry2 ", v.Field(0), v.Field(1))
-	}
-	//log.Println("--->", a.i)
-	return "hello1"
-}
-
-func NewFunc() func(this unsafe.Pointer) string {
-	a := A{index}
-	index++
-	return a.fn
-}
-
 func TestValueMethod2(t *testing.T) {
 	fs := []reflect.StructField{
 		reflect.StructField{Name: "X", Type: reflect.TypeOf(0)},
 		reflect.StructField{Name: "Y", Type: reflect.TypeOf(0)},
+		reflect.StructField{Name: "_mhash", PkgPath: "main", Type: reflect.TypeOf(0)},
 	}
 	typ := NamedStructOf("main", "Point", fs)
 	tyString := reflect.FuncOf(nil, []reflect.Type{strTyp}, false)
@@ -109,44 +67,15 @@ func TestValueMethod2(t *testing.T) {
 	v.Field(0).SetInt(1)
 	v.Field(1).SetInt(100)
 
-	rt := totype(nt)
-	log.Println("==>", tovalue(&v).ptr)
-	myTest := func(this unsafe.Pointer) string {
-		pc, _, _, ok := runtime.Caller(0)
-		if ok {
-			typ := entryMap[runtime.FuncForPC(pc).Entry()]
-			log.Println("---> entry1", typ)
-			v := reflect.NewAt(typ, this).Elem()
-			log.Println("----> entry2 ", v.Field(0), v.Field(1))
-		}
-		//vp := reflect.NewAt(nt, this)
-		//log.Println("--->", vp.Kind())
-		// if typ, ok := ptrTypeMap[this]; ok {
-		// 	log.Println("---->", typ)
-		// }
-		//log.Println("---> typ", ptrTypeMap, fnTest, index)
-		//	v := reflect.NewAt(nt, this).Elem()
-		//	log.Println(v.Field(0), v.Field(1))
-		return "hello"
-	}
-	_ = myTest
-	fn := reflect.ValueOf(icall(0, 0, true))
-	entryMap[fn.Pointer()] = nt
-
-	rt.exportedMethods()[0].ifn = resolveReflectText(unsafe.Pointer(fn.Pointer()))
-	r0 := v.Method(0).Call(nil)
-	v.Field(0).SetInt(-100)
-	log.Println("---> return1", r0, v)
-	return
 	MethodByType(nt, 0).Func.Call([]reflect.Value{v})
 
-	r := v.Method(0).Call(nil)
-	i := v.Interface()
-	iv := reflect.ValueOf(i)
-	storeValue(iv)
+	r := v.MethodByName("String").Call(nil)
 
+	log.Println(r)
+	log.Println(v)
 	r = v.Method(1).Call([]reflect.Value{reflect.ValueOf(100)})
 	log.Println(r)
+	return
 
 	fmt.Println(v)
 	v.Method(2).Call([]reflect.Value{reflect.ValueOf(-1), reflect.ValueOf("word")})

@@ -13,10 +13,13 @@ import (
 var head = `package reflectx
 
 func icall(i int, bytes int, ret bool) interface{} {
+	if i > max_icall_index || bytes > max_icall_bytes {
+		return nil
+	}
 	if ret {
-		return icall_array[i+bytes/8*max_icall_index]
+		return icall_array[i+bytes*max_icall_index/64]
 	} else {
-		return icall_array_n[i+bytes/8*max_icall_index]
+		return icall_array_n[i+bytes*max_icall_index/64]
 	}
 }
 `
@@ -31,14 +34,15 @@ var templ_n = `	func(p uintptr, a [$bytes]byte) { icall_x($index, p, a[:]) },
 `
 
 const (
-	max_index = 128
-	max_bytes = 128
+	max_index = 4
+	max_bytes = 32
 )
 
 func main() {
 	var buf bytes.Buffer
 	buf.WriteString(head)
 	buf.WriteString(fmt.Sprintf("\nconst max_icall_index = %v\n", max_index))
+	buf.WriteString(fmt.Sprintf("const max_icall_bytes = %v\n", max_bytes))
 	buf.WriteString("\nvar icall_array = []interface{}{\n")
 	for i := 0; i <= max_index; i++ {
 		for j := 0; j <= max_bytes; j += 8 {
