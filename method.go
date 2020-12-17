@@ -40,6 +40,7 @@ func methodOf(styp reflect.Type, ms []reflect.Method) (*rtype, reflect.Type) {
 		})
 	}
 	ort := totype(styp)
+	var ptrto bool
 	var tt reflect.Value
 	var rt *rtype
 	switch styp.Kind() {
@@ -70,8 +71,8 @@ func methodOf(styp reflect.Type, ms []reflect.Method) (*rtype, reflect.Type) {
 		st := (*ptrType)(unsafe.Pointer(tt.Elem().Field(0).UnsafeAddr()))
 		rt = (*rtype)(unsafe.Pointer(st))
 		st.elem = ((*ptrType)(unsafe.Pointer(ort))).elem
+		ptrto = true
 	}
-
 	ut := (*uncommonType)(unsafe.Pointer(tt.Elem().Field(1).UnsafeAddr()))
 	copy(tt.Elem().Field(2).Slice(0, len(methods)).Interface().([]method), methods)
 
@@ -125,7 +126,7 @@ func methodOf(styp reflect.Type, ms []reflect.Method) (*rtype, reflect.Type) {
 		}
 		outTyp := reflect.StructOf(outFields)
 		sz := totype(inTyp).size
-		ifn := icall(i, int(sz), len(out) > 0)
+		ifn := icall(i, int(sz), len(out) > 0, ptrto)
 		if ifn == nil {
 			log.Printf("warning cannot wrapper method index:%v, size: %v\n", i, sz)
 		} else {
@@ -134,6 +135,7 @@ func methodOf(styp reflect.Type, ms []reflect.Method) (*rtype, reflect.Type) {
 		infos = append(infos, &methodInfo{i, inTyp, outTyp})
 	}
 	typInfoMap[typ] = infos
+	log.Println("----- infos", infos)
 
 	nt := &Named{Name: styp.Name(), PkgPath: styp.PkgPath(), Type: typ, Kind: TkStruct}
 	ntypeMap[typ] = nt
@@ -219,15 +221,18 @@ func foundTypeByPtr(ptr unsafe.Pointer) reflect.Type {
 	return nil
 }
 
-func icall_x(i int, this uintptr, p []byte) []byte {
+func icall_x(i int, this uintptr, p []byte, ptrto bool) []byte {
 	ptr := unsafe.Pointer(this)
 
-	log.Println("-----------> icall", i, unsafe.Pointer(this), p)
+	log.Println("-----------> icall", i, unsafe.Pointer(this), p, ptrto)
 
 	typ := foundTypeByPtr(ptr)
 	if typ == nil {
 		log.Println("cannot found ptr type", ptr)
 		return nil
+	}
+	if ptrto {
+		typ = reflect.PtrTo(typ)
 	}
 	infos, ok := typInfoMap[typ]
 	if !ok {
@@ -238,7 +243,11 @@ func icall_x(i int, this uintptr, p []byte) []byte {
 	var in []reflect.Value
 	inCount := method.Type.NumIn()
 	in = make([]reflect.Value, inCount, inCount)
-	in[0] = reflect.NewAt(typ, ptr).Elem()
+	if ptrto {
+		in[0] = reflect.NewAt(typ.Elem(), ptr)
+	} else {
+		in[0] = reflect.NewAt(typ, ptr).Elem()
+	}
 	if inCount > 1 {
 		inArgs := reflect.NewAt(info.inTyp, unsafe.Pointer(&p[0])).Elem()
 		for i := 1; i < inCount; i++ {

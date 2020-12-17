@@ -55,6 +55,8 @@ func TestMy(t *testing.T) {
 	log.Println(nt, nt.NumMethod())
 	log.Println(reflect.PtrTo(nt), reflect.PtrTo(nt).NumMethod())
 	v := New(nt)
+	v.Elem().Field(0).SetInt(100)
+	v.Elem().Field(1).SetInt(200)
 	log.Println(ptrTypeMap)
 	log.Println(v)
 	// p0 := reflect.PtrTo(nt)
