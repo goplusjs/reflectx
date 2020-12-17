@@ -15,11 +15,56 @@ var (
 	iType   = reflect.TypeOf((*interface{})(nil)).Elem()
 )
 
-func TestValueMethod2(t *testing.T) {
+type My struct {
+	x int
+}
+
+func (m *My) Test(x int) {
+	m.x = x
+}
+
+func (m My) GetX() int {
+	return m.x
+}
+
+func TestMy(t *testing.T) {
+	ptr := reflect.TypeOf((*My)(nil))
+	//log.Println(ptr.)
+	rt := totype(ptr)
+	log.Println(rt.uncommon())
 	fs := []reflect.StructField{
 		reflect.StructField{Name: "X", Type: reflect.TypeOf(0)},
 		reflect.StructField{Name: "Y", Type: reflect.TypeOf(0)},
-		reflect.StructField{Name: "_mhash", PkgPath: "main", Type: reflect.TypeOf(0)},
+	}
+	typ := NamedStructOf("main", "Point", fs)
+	tyString := reflect.FuncOf(nil, []reflect.Type{strTyp}, false)
+	fnString := reflect.MakeFunc(tyString, func(args []reflect.Value) []reflect.Value {
+		log.Println("---> call String args", args)
+		e := args[0].Elem()
+		info := fmt.Sprintf("%v-%v", e.Field(0), e.Field(1))
+		//info := fmt.Sprintf("info:{%v %v}", args[0].Field(0), args[0].Field(1))
+		return []reflect.Value{reflect.ValueOf(info) /*, reflect.ValueOf(-1024)*/}
+	})
+	nt := MethodOf(typ, nil, []reflect.Method{
+		reflect.Method{
+			Name: "String",
+			Type: tyString,
+			Func: fnString,
+		},
+	})
+	log.Println(nt, nt.NumMethod())
+	log.Println(reflect.PtrTo(nt), reflect.PtrTo(nt).NumMethod())
+	v := New(nt)
+	log.Println(ptrTypeMap)
+	log.Println(v)
+	// p0 := reflect.PtrTo(nt)
+	// reflect.StructOf()
+}
+
+func _TestValueMethod2(t *testing.T) {
+	fs := []reflect.StructField{
+		reflect.StructField{Name: "X", Type: reflect.TypeOf(0)},
+		reflect.StructField{Name: "Y", Type: reflect.TypeOf(0)},
 	}
 	typ := NamedStructOf("main", "Point", fs)
 	tyString := reflect.FuncOf(nil, []reflect.Type{strTyp}, false)
@@ -61,7 +106,7 @@ func TestValueMethod2(t *testing.T) {
 			Type: tySet,
 			Func: fnSet,
 		},
-	})
+	}, nil)
 	v0 := New(nt)
 	v := v0.Elem()
 	v.Field(0).SetInt(1)
@@ -99,7 +144,7 @@ func _TestTypeMethod(t *testing.T) {
 			Type: mtyp,
 			Func: mfn,
 		},
-	})
+	}, nil)
 	m := MethodByType(nt, 0)
 	v := reflect.New(nt).Elem()
 	v.Field(0).SetInt(100)

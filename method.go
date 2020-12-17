@@ -17,7 +17,18 @@ var (
 //go:linkname memmove reflect.memmove
 func memmove(dst, src unsafe.Pointer, size uintptr)
 
-func MethodOf(styp reflect.Type, ms []reflect.Method) reflect.Type {
+func MethodOf(styp reflect.Type, ms []reflect.Method, pms []reflect.Method) reflect.Type {
+	rt, typ := methodOf(styp, ms)
+	prt, _ := methodOf(reflect.PtrTo(styp), pms)
+	rt.ptrToThis = resolveReflectType(prt)
+	(*ptrType)(unsafe.Pointer(prt)).elem = rt
+	return typ
+}
+
+func methodOf(styp reflect.Type, ms []reflect.Method) (*rtype, reflect.Type) {
+	if ms == nil {
+		return totype(styp), styp
+	}
 	var methods []method
 	for _, m := range ms {
 		ptr := tovalue(&m.Func).ptr
@@ -28,41 +39,57 @@ func MethodOf(styp reflect.Type, ms []reflect.Method) reflect.Type {
 			tfn:  resolveReflectText(unsafe.Pointer(ptr)),
 		})
 	}
-	tt := reflect.New(reflect.StructOf([]reflect.StructField{
-		{Name: "S", Type: reflect.TypeOf(structType{})},
-		{Name: "U", Type: reflect.TypeOf(uncommonType{})},
-		{Name: "M", Type: reflect.ArrayOf(len(methods), reflect.TypeOf(methods[0]))},
-	}))
+	ort := totype(styp)
+	var tt reflect.Value
+	var rt *rtype
+	switch styp.Kind() {
+	case reflect.Struct:
+		tt = reflect.New(reflect.StructOf([]reflect.StructField{
+			{Name: "S", Type: reflect.TypeOf(structType{})},
+			{Name: "U", Type: reflect.TypeOf(uncommonType{})},
+			{Name: "M", Type: reflect.ArrayOf(len(methods), reflect.TypeOf(methods[0]))},
+		}))
+		st := (*structType)(unsafe.Pointer(tt.Elem().Field(0).UnsafeAddr()))
+		ost := toStructType(ort)
+		if styp.Kind() == reflect.Struct {
+			st.fields = ost.fields
+			if AddVerifyField {
+				st.fields = append(st.fields, structField{
+					name: newName(verifyFieldName, "", false),
+					typ:  verifyFieldType,
+				})
+			}
+		}
+		rt = (*rtype)(unsafe.Pointer(st))
+	case reflect.Ptr:
+		tt = reflect.New(reflect.StructOf([]reflect.StructField{
+			{Name: "S", Type: reflect.TypeOf(ptrType{})},
+			{Name: "U", Type: reflect.TypeOf(uncommonType{})},
+			{Name: "M", Type: reflect.ArrayOf(len(methods), reflect.TypeOf(methods[0]))},
+		}))
+		st := (*ptrType)(unsafe.Pointer(tt.Elem().Field(0).UnsafeAddr()))
+		rt = (*rtype)(unsafe.Pointer(st))
+		st.elem = ((*ptrType)(unsafe.Pointer(ort))).elem
+	}
 
-	st := (*structType)(unsafe.Pointer(tt.Elem().Field(0).UnsafeAddr()))
 	ut := (*uncommonType)(unsafe.Pointer(tt.Elem().Field(1).UnsafeAddr()))
 	copy(tt.Elem().Field(2).Slice(0, len(methods)).Interface().([]method), methods)
+
 	ut.mcount = uint16(len(methods))
 	ut.xcount = ut.mcount
 	ut.moff = uint32(unsafe.Sizeof(uncommonType{}))
 
-	ort := totype(styp)
-	ost := toStructType(ort)
+	rt.size = ort.size
+	rt.tflag = ort.tflag | tflagUncommon
+	rt.kind = ort.kind
+	rt.fieldAlign = ort.fieldAlign
+	rt.str = resolveReflectName(ort.nameOff(ort.str))
 
-	st.size = ort.size
-	st.tflag = ort.tflag
-	st.kind = ort.kind
-	st.fields = ost.fields
-	if AddVerifyField {
-		st.fields = append(st.fields, structField{
-			name: newName(verifyFieldName, "", false),
-			typ:  verifyFieldType,
-		})
-	}
-
-	st.fieldAlign = ost.fieldAlign
-	st.str = resolveReflectName(ort.nameOff(ort.str))
-
-	rt := (*rtype)(unsafe.Pointer(st))
 	typ := toType(rt)
 
 	// update receiver type, rewrite tfn&ifn
 	em := rt.exportedMethods()
+
 	var infos []*methodInfo
 	for i, m := range ms {
 		mtyp := m.Func.Type()
@@ -111,7 +138,7 @@ func MethodOf(styp reflect.Type, ms []reflect.Method) reflect.Type {
 	nt := &Named{Name: styp.Name(), PkgPath: styp.PkgPath(), Type: typ, Kind: TkStruct}
 	ntypeMap[typ] = nt
 
-	return typ
+	return rt, typ
 }
 
 var (
@@ -165,9 +192,11 @@ func storeValue(v reflect.Value) {
 	ptr := tovalue(&v).ptr
 	ptrTypeMap[ptr] = toElem(v.Type())
 	if AddVerifyField {
-		v := FieldByName(v.Elem(), verifyFieldName)
-		if v.IsValid() {
-			v.SetPointer(ptr)
+		if v.Kind() == reflect.Ptr && v.Elem().Kind() == reflect.Struct {
+			v := FieldByName(v.Elem(), verifyFieldName)
+			if v.IsValid() {
+				v.SetPointer(ptr)
+			}
 		}
 	}
 }
@@ -192,6 +221,9 @@ func foundTypeByPtr(ptr unsafe.Pointer) reflect.Type {
 
 func icall_x(i int, this uintptr, p []byte) []byte {
 	ptr := unsafe.Pointer(this)
+
+	log.Println("-----------> icall", i, unsafe.Pointer(this), p)
+
 	typ := foundTypeByPtr(ptr)
 	if typ == nil {
 		log.Println("cannot found ptr type", ptr)
