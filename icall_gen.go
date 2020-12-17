@@ -17,9 +17,9 @@ func icall(i int, bytes int, ret bool) interface{} {
 		return nil
 	}
 	if ret {
-		return icall_array[i+bytes*max_icall_index/64]
+		return icall_array[i+bytes/8*(max_icall_bytes/8+1)]
 	} else {
-		return icall_array_n[i+bytes*max_icall_index/64]
+		return icall_array_n[i+bytes/8*(max_icall_bytes/8+1)]
 	}
 }
 `
@@ -34,8 +34,8 @@ var templ_n = `	func(p uintptr, a [$bytes]byte) { icall_x($index, p, a[:]) },
 `
 
 const (
-	max_index = 4
-	max_bytes = 32
+	max_index = 128
+	max_bytes = 256
 )
 
 func main() {
