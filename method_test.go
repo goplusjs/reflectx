@@ -17,50 +17,96 @@ var (
 
 type My struct {
 	x int
+	y int
 }
 
-func (m *My) Test(x int) {
+func (m *My) Set(x int, y int) {
 	m.x = x
+	m.y = x
 }
 
-func (m My) GetX() int {
-	return m.x
+func (m My) Get() (int, int) {
+	return m.x, m.y
 }
 
-func TestMy(t *testing.T) {
+func (m My) ABC() {
+
+}
+
+func (m *My) A00() {
+
+}
+
+func _TestMy(t *testing.T) {
 	ptr := reflect.TypeOf((*My)(nil))
-	//log.Println(ptr.)
-	rt := totype(ptr)
-	log.Println(rt.uncommon())
+	log.Println(ptr.NumMethod(), ptr.Elem().NumMethod())
+	for i := 0; i < ptr.NumMethod(); i++ {
+		log.Println(ptr.Method(i))
+	}
+	for _, m := range totype(ptr).exportedMethods() {
+		log.Println(m)
+	}
+	for i := 0; i < ptr.Elem().NumMethod(); i++ {
+		log.Println(ptr.Elem().Method(i))
+	}
+	for _, m := range totype(ptr.Elem()).exportedMethods() {
+		log.Println(m)
+	}
+}
+
+func TestDynamicMethod(t *testing.T) {
 	fs := []reflect.StructField{
 		reflect.StructField{Name: "X", Type: reflect.TypeOf(0)},
 		reflect.StructField{Name: "Y", Type: reflect.TypeOf(0)},
 	}
-	typ := NamedStructOf("main", "Point", fs)
-	tyString := reflect.FuncOf(nil, []reflect.Type{strTyp}, false)
-	fnString := reflect.MakeFunc(tyString, func(args []reflect.Value) []reflect.Value {
-		log.Println("---> call String args", args)
-		e := args[0].Elem()
-		info := fmt.Sprintf("%v-%v", e.Field(0), e.Field(1))
-		//info := fmt.Sprintf("info:{%v %v}", args[0].Field(0), args[0].Field(1))
-		return []reflect.Value{reflect.ValueOf(info) /*, reflect.ValueOf(-1024)*/}
+	styp := NamedStructOf("main", "Point", fs)
+	mString := MakeMethod(
+		"String",
+		true,
+		reflect.FuncOf(nil, []reflect.Type{strTyp}, false),
+		func(args []reflect.Value) (result []reflect.Value) {
+			log.Println("call String", args)
+			v := args[0].Elem()
+			s := fmt.Sprintf("%v-%v", v.Field(0), v.Field(1))
+			result = append(result, reflect.ValueOf(s))
+			return
+		})
+	mSet := MakeMethod(
+		"Set",
+		true,
+		reflect.FuncOf([]reflect.Type{intTyp, intTyp}, nil, false),
+		func(args []reflect.Value) (result []reflect.Value) {
+			log.Println("call Set", args)
+			v := args[0].Elem()
+			v.Field(0).Set(args[1])
+			v.Field(1).Set(args[2])
+			return
+		})
+	mGet := MakeMethod(
+		"Get",
+		false,
+		reflect.FuncOf(nil, []reflect.Type{intTyp, intTyp}, false),
+		func(args []reflect.Value) (result []reflect.Value) {
+			log.Println("call Get", args)
+			v := args[0]
+			return []reflect.Value{v.Field(0), v.Field(1)}
+		})
+	typ := MethodOf(styp, []Method{
+		mString,
+		mSet,
+		mGet,
 	})
-	nt := MethodOf(typ, nil, []reflect.Method{
-		reflect.Method{
-			Name: "String",
-			Type: tyString,
-			Func: fnString,
-		},
-	})
-	log.Println(nt, nt.NumMethod())
-	log.Println(reflect.PtrTo(nt), reflect.PtrTo(nt).NumMethod())
-	v := New(nt)
-	v.Elem().Field(0).SetInt(100)
-	v.Elem().Field(1).SetInt(200)
-	log.Println(ptrTypeMap)
-	log.Println(v)
-	// p0 := reflect.PtrTo(nt)
-	// reflect.StructOf()
+	log.Println(typ.NumMethod())
+	log.Println(reflect.PtrTo(typ).NumMethod())
+	pt := New(typ).Elem()
+	log.Println(pt.Field(0), pt.Field(1), pt.Field(2))
+	pt.Field(0).SetInt(100)
+	pt.Field(1).SetInt(200)
+	log.Println(pt)
+	r := pt.MethodByName("Get").Call(nil)
+	log.Println(r[0], r[1])
+	pt.Addr().MethodByName("Set").Call([]reflect.Value{reflect.ValueOf(200), reflect.ValueOf(300)})
+	log.Println(pt)
 }
 
 func _TestValueMethod2(t *testing.T) {
@@ -92,23 +138,23 @@ func _TestValueMethod2(t *testing.T) {
 		return nil
 	})
 
-	nt := MethodOf(typ, []reflect.Method{
-		reflect.Method{
+	nt := MethodOf(typ, []Method{
+		Method{
 			Name: "String",
 			Type: tyString,
 			Func: fnString,
 		},
-		reflect.Method{
+		Method{
 			Name: "Test",
 			Type: tyTest,
 			Func: fnTest,
 		},
-		reflect.Method{
+		Method{
 			Name: "Set",
 			Type: tySet,
 			Func: fnSet,
 		},
-	}, nil)
+	})
 	v0 := New(nt)
 	v := v0.Elem()
 	v.Field(0).SetInt(1)
@@ -140,13 +186,13 @@ func _TestTypeMethod(t *testing.T) {
 		info := fmt.Sprintf("info:%v-%v", args[0], args[1])
 		return []reflect.Value{reflect.ValueOf(info)}
 	})
-	nt := MethodOf(typ, []reflect.Method{
-		reflect.Method{
+	nt := MethodOf(typ, []Method{
+		Method{
 			Name: "Test",
 			Type: mtyp,
 			Func: mfn,
 		},
-	}, nil)
+	})
 	m := MethodByType(nt, 0)
 	v := reflect.New(nt).Elem()
 	v.Field(0).SetInt(100)
