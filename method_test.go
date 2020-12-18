@@ -111,6 +111,7 @@ func TestDynamicMethod(t *testing.T) {
 			}
 			return []reflect.Value{reflect.ValueOf(int(sum))}
 		})
+	mAppend.Export = true
 
 	typ := MethodOf(styp, []Method{
 		mString,

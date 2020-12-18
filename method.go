@@ -11,7 +11,6 @@ import (
 
 var (
 	EnableVerifyField = true
-	EnableAllMethods  = true
 	verifyFieldType   = reflect.TypeOf(unsafe.Pointer(nil))
 	verifyFieldName   = "_reflectx_verify"
 )
@@ -25,6 +24,7 @@ type Method struct {
 	Type    reflect.Type  // method type without receiver
 	Func    reflect.Value // func with receiver as first argument
 	Pointer bool          // receiver is pointer
+	Export  bool          // force export unexported method
 }
 
 // MakeMethod returns a new Method of the given Type
@@ -83,7 +83,7 @@ func methodOf(styp reflect.Type, elem reflect.Type, ms []Method) (*rtype, reflec
 	var exported int
 	for _, m := range ms {
 		ptr := tovalue(&m.Func).ptr
-		isexport := EnableAllMethods || isExported(m.Name)
+		isexport := m.Export || isExported(m.Name)
 		methods = append(methods, method{
 			name: resolveReflectName(newName(m.Name, "", isexport)),
 			mtyp: resolveReflectType(totype(m.Type)),
