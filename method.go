@@ -10,9 +10,10 @@ import (
 )
 
 var (
-	AddVerifyField  = true
-	verifyFieldType = reflect.TypeOf(unsafe.Pointer(nil))
-	verifyFieldName = "_reflectx_verify"
+	EnableVerifyField = true
+	EnableAllMethods  = true
+	verifyFieldType   = reflect.TypeOf(unsafe.Pointer(nil))
+	verifyFieldName   = "_reflectx_verify"
 )
 
 // memmove copies size bytes to dst from src. No write barriers are used.
@@ -56,7 +57,7 @@ func MethodOf(styp reflect.Type, methods []Method) reflect.Type {
 			ms = append(ms, m)
 		}
 	}
-	if AddVerifyField && styp.Kind() == reflect.Struct {
+	if EnableVerifyField && styp.Kind() == reflect.Struct {
 		var fs []reflect.StructField
 		for i := 0; i < styp.NumField(); i++ {
 			fs = append(fs, styp.Field(i))
@@ -82,13 +83,14 @@ func methodOf(styp reflect.Type, elem reflect.Type, ms []Method) (*rtype, reflec
 	var exported int
 	for _, m := range ms {
 		ptr := tovalue(&m.Func).ptr
+		isexport := EnableAllMethods || isExported(m.Name)
 		methods = append(methods, method{
-			name: resolveReflectName(newName(m.Name, "", isExported(m.Name))),
+			name: resolveReflectName(newName(m.Name, "", isexport)),
 			mtyp: resolveReflectType(totype(m.Type)),
 			ifn:  resolveReflectText(unsafe.Pointer(ptr)),
 			tfn:  resolveReflectText(unsafe.Pointer(ptr)),
 		})
-		if isExported(m.Name) {
+		if isexport {
 			exported++
 		}
 	}
@@ -272,7 +274,7 @@ func toElem(typ reflect.Type) reflect.Type {
 func storeValue(v reflect.Value) {
 	ptr := tovalue(&v).ptr
 	ptrTypeMap[ptr] = toElem(v.Type())
-	if AddVerifyField {
+	if EnableVerifyField {
 		if v.Kind() == reflect.Ptr {
 			elem := v.Elem()
 			if elem.Kind() == reflect.Struct {
@@ -294,7 +296,7 @@ func foundTypeByPtr(ptr unsafe.Pointer) reflect.Type {
 		v2 := reflect.NewAt(typ, ptr).Elem()
 		v1 := reflect.NewAt(typ, p).Elem()
 		if reflect.DeepEqual(v1.Interface(), v2.Interface()) {
-			if !AddVerifyField {
+			if !EnableVerifyField {
 				log.Printf("no verify, found type %v by %v\n", typ, ptr)
 			}
 			return typ

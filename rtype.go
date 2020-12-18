@@ -283,6 +283,14 @@ func (t *rtype) exportedMethods() []method {
 	return ut.exportedMethods()
 }
 
+func (t *rtype) methods() []method {
+	ut := t.uncommon()
+	if ut == nil {
+		return nil
+	}
+	return ut.methods()
+}
+
 func (t *rtype) NumMethod() int {
 	if t.Kind() == reflect.Interface {
 		tt := (*interfaceType)(unsafe.Pointer(t))
