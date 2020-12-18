@@ -52,6 +52,14 @@ func _TestMy(t *testing.T) {
 	for _, m := range totype(ptr.Elem()).exportedMethods() {
 		log.Println(m)
 	}
+	v := reflect.New(ptr.Elem()).Elem()
+	log.Println(v)
+	m, _ := ptr.MethodByName("Get")
+	r := m.Func.Call([]reflect.Value{v.Addr()})
+	log.Println(r, tovalue(&m.Func))
+	m2, _ := ptr.Elem().MethodByName("Get")
+	r = m2.Func.Call([]reflect.Value{v})
+	log.Println(r, tovalue(&m2.Func))
 }
 
 func TestDynamicMethod(t *testing.T) {
@@ -62,11 +70,11 @@ func TestDynamicMethod(t *testing.T) {
 	styp := NamedStructOf("main", "Point", fs)
 	mString := MakeMethod(
 		"String",
-		true,
+		false,
 		reflect.FuncOf(nil, []reflect.Type{strTyp}, false),
 		func(args []reflect.Value) (result []reflect.Value) {
 			log.Println("call String", args)
-			v := args[0].Elem()
+			v := args[0] //.Elem()
 			s := fmt.Sprintf("%v-%v", v.Field(0), v.Field(1))
 			result = append(result, reflect.ValueOf(s))
 			return
@@ -91,22 +99,47 @@ func TestDynamicMethod(t *testing.T) {
 			v := args[0]
 			return []reflect.Value{v.Field(0), v.Field(1)}
 		})
+	mAppend := MakeMethod(
+		"Append",
+		false,
+		reflect.FuncOf([]reflect.Type{reflect.SliceOf(intTyp)}, []reflect.Type{intTyp}, true),
+		func(args []reflect.Value) (result []reflect.Value) {
+			var sum int64
+			log.Println("append", args, args[1].Len())
+			for i := 0; i < args[1].Len(); i++ {
+				sum += args[1].Index(i).Int()
+			}
+			return []reflect.Value{reflect.ValueOf(int(sum))}
+		})
+
 	typ := MethodOf(styp, []Method{
 		mString,
 		mSet,
 		mGet,
+		mAppend,
 	})
-	log.Println(typ.NumMethod())
-	log.Println(reflect.PtrTo(typ).NumMethod())
+	ptrType := reflect.PtrTo(typ)
+	for i := 0; i < ptrType.NumMethod(); i++ {
+		log.Println("ptr", ptrType.Method(i))
+	}
+	for i := 0; i < typ.NumMethod(); i++ {
+		log.Println("struct", typ.Method(i))
+	}
 	pt := New(typ).Elem()
-	log.Println(pt.Field(0), pt.Field(1), pt.Field(2))
 	pt.Field(0).SetInt(100)
 	pt.Field(1).SetInt(200)
-	log.Println(pt)
 	r := pt.MethodByName("Get").Call(nil)
 	log.Println(r[0], r[1])
-	pt.Addr().MethodByName("Set").Call([]reflect.Value{reflect.ValueOf(200), reflect.ValueOf(300)})
-	log.Println(pt)
+	r = pt.Addr().MethodByName("Get").Call(nil)
+	log.Println(r[0], r[1])
+	m, _ := MethodByName(typ, "Get")
+	r = m.Func.Call([]reflect.Value{pt})
+	log.Println(r)
+	m, _ = MethodByName(ptrType, "Get")
+	r = m.Func.Call([]reflect.Value{pt.Addr()})
+	log.Println(r)
+	pt.Addr().MethodByName("Set").Call([]reflect.Value{reflect.ValueOf(300), reflect.ValueOf(400)})
+	log.Println(pt, pt.Addr())
 }
 
 func _TestValueMethod2(t *testing.T) {

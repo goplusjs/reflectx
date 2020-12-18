@@ -12,24 +12,26 @@ import (
 
 var head = `package reflectx
 
-func icall(i int, bytes int, ret bool, ptrto bool) interface{} {
+func icall(i int, bytes int, ret bool, ptrto bool) (index int, v interface{}) {
 	if i > max_icall_index || bytes > max_icall_bytes {
-		return nil
+		index = -1
+		return
 	}
-	index := bytes/8 + i*(max_icall_bytes/8+1)
+	index = bytes/8 + i*(max_icall_bytes/8+1)
 	if ptrto {
 		if ret {
-			return icall_ptr[index]
+			v = icall_ptr[index]
 		} else {
-			return icall_ptr_n[index]
+			v = icall_ptr_n[index]
 		}
 	} else {
 		if ret {
-			return icall_struct[index]
+			v = icall_struct[index]
 		} else {
-			return icall_struct_n[index]
+			v = icall_struct_n[index]
 		}
 	}
+	return
 }
 `
 
@@ -59,18 +61,18 @@ func main() {
 			for j := 0; j <= max_bytes; j += 8 {
 				r := strings.NewReplacer("$index", strconv.Itoa(i), "$bytes", strconv.Itoa(j), "$ptr", ptr)
 				if j == 0 {
-					r.WriteString(&buf, t)
-				} else {
 					r.WriteString(&buf, t0)
+				} else {
+					r.WriteString(&buf, t)
 				}
 			}
 		}
 		buf.WriteString("}\n")
 	}
 	fnWrite("icall_struct", templ, templ_0, "false")
-	fnWrite("icall_struct_n", templ_0, templ_n, "false")
+	fnWrite("icall_struct_n", templ_n, templ_n_0, "false")
 	fnWrite("icall_ptr", templ, templ_0, "true")
-	fnWrite("icall_ptr_n", templ_0, templ_n, "true")
+	fnWrite("icall_ptr_n", templ_n, templ_n_0, "true")
 
 	ioutil.WriteFile("./icall.go", buf.Bytes(), 0666)
 }

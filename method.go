@@ -69,14 +69,14 @@ func MethodOf(styp reflect.Type, methods []Method) reflect.Type {
 		styp = NamedStructOf(styp.PkgPath(), styp.Name(), fs)
 	}
 
-	rt, typ := methodOf(styp, ms)
-	prt, _ := methodOf(reflect.PtrTo(styp), methods)
+	rt, typ := methodOf(styp, nil, ms)
+	prt, _ := methodOf(reflect.PtrTo(styp), typ, methods)
 	rt.ptrToThis = resolveReflectType(prt)
 	(*ptrType)(unsafe.Pointer(prt)).elem = rt
 	return typ
 }
 
-func methodOf(styp reflect.Type, ms []Method) (*rtype, reflect.Type) {
+func methodOf(styp reflect.Type, elem reflect.Type, ms []Method) (*rtype, reflect.Type) {
 	ptrto := styp.Kind() == reflect.Ptr
 	var methods []method
 	var exported int
@@ -140,11 +140,11 @@ func methodOf(styp reflect.Type, ms []Method) (*rtype, reflect.Type) {
 		mtyp := m.Func.Type()
 		var in []reflect.Type
 
-		if ptrto && !m.Pointer {
-			in = append(in, typ.Elem())
-		} else {
-			in = append(in, typ)
-		}
+		// if ptrto && !m.Pointer {
+		// 	in = append(in, typ.Elem())
+		// } else {
+		in = append(in, typ)
+		// }
 
 		for i := 0; i < mtyp.NumIn(); i++ {
 			in = append(in, mtyp.In(i))
@@ -155,8 +155,18 @@ func methodOf(styp reflect.Type, ms []Method) (*rtype, reflect.Type) {
 		}
 		// rewrite tfn
 		ntyp := reflect.FuncOf(in, out, false)
-		funcImpl := (*makeFuncImpl)(tovalue(&m.Func).ptr)
-		funcImpl.ftyp = (*funcType)(unsafe.Pointer(totype(ntyp)))
+		nindex := i
+		if ptrto && !m.Pointer {
+			mm, _ := elem.MethodByName(m.Name)
+			nindex = mm.Index
+			cv := reflect.MakeFunc(ntyp, func(args []reflect.Value) (results []reflect.Value) {
+				return args[0].Elem().Method(nindex).Call(args[1:])
+			})
+			em[i].tfn = resolveReflectText(tovalue(&cv).ptr)
+		} else {
+			funcImpl := (*makeFuncImpl)(tovalue(&m.Func).ptr)
+			funcImpl.ftyp = (*funcType)(unsafe.Pointer(totype(ntyp)))
+		}
 
 		// rewrite ifn
 		var inFields []reflect.StructField
@@ -176,14 +186,20 @@ func methodOf(styp reflect.Type, ms []Method) (*rtype, reflect.Type) {
 		}
 		outTyp := reflect.StructOf(outFields)
 		sz := totype(inTyp).size
-		ifn := icall(i, int(sz), len(out) > 0, ptrto)
-		log.Println("--->", i, int(sz), len(out), typ, ms[i].Name, em[i].name, ifn)
+		_, ifn := icall(i, int(sz), len(out) > 0, ptrto)
+		//log.Println("--->", i, index, int(sz), len(out), typ, ntyp, ms[i].Name, em[i].name, ifn, em[i].tfn)
 		if ifn == nil {
 			log.Printf("warning cannot wrapper method index:%v, size: %v\n", i, sz)
 		} else {
 			em[i].ifn = resolveReflectText(unsafe.Pointer(reflect.ValueOf(ifn).Pointer()))
 		}
-		infos = append(infos, &methodInfo{i, inTyp, outTyp})
+		infos = append(infos, &methodInfo{
+			inTyp:    inTyp,
+			outTyp:   outTyp,
+			index:    nindex,
+			pointer:  m.Pointer,
+			variadic: m.Type.IsVariadic(),
+		})
 	}
 	typInfoMap[typ] = infos
 
@@ -199,9 +215,11 @@ var (
 )
 
 type methodInfo struct {
-	index  int
-	inTyp  reflect.Type
-	outTyp reflect.Type
+	inTyp    reflect.Type
+	outTyp   reflect.Type
+	index    int
+	pointer  bool
+	variadic bool
 }
 
 func MethodByType(typ reflect.Type, index int) reflect.Method {
@@ -210,6 +228,17 @@ func MethodByType(typ reflect.Type, index int) reflect.Method {
 		tovalue(&m.Func).flag |= flagIndir
 	}
 	return m
+}
+
+func MethodByName(typ reflect.Type, name string) (m reflect.Method, ok bool) {
+	m, ok = typ.MethodByName(name)
+	if !ok {
+		return
+	}
+	if _, ok := ntypeMap[typ]; ok {
+		tovalue(&m.Func).flag |= flagIndir
+	}
+	return
 }
 
 type makeFuncImpl struct {
@@ -289,19 +318,39 @@ func icall_x(i int, this uintptr, p []byte, ptrto bool) []byte {
 		log.Println("cannot found type info", typ)
 	}
 	info := infos[i]
-	method := MethodByType(typ, info.index)
-	var in []reflect.Value
-	inCount := method.Type.NumIn()
-	in = make([]reflect.Value, inCount, inCount)
-	if ptrto {
-		in[0] = reflect.NewAt(typ.Elem(), ptr)
+	log.Println("------->", typ, i, info.index)
+	var method reflect.Method
+	if ptrto && !info.pointer {
+		method = MethodByType(typ.Elem(), info.index)
 	} else {
-		in[0] = reflect.NewAt(typ, ptr).Elem()
+		method = MethodByType(typ, info.index)
 	}
+	var in []reflect.Value
+	var receiver reflect.Value
+	if ptrto {
+		receiver = reflect.NewAt(typ.Elem(), ptr)
+		if !info.pointer {
+			receiver = receiver.Elem()
+		}
+	} else {
+		receiver = reflect.NewAt(typ, ptr).Elem()
+	}
+	in = append(in, receiver)
+	inCount := method.Type.NumIn()
 	if inCount > 1 {
 		inArgs := reflect.NewAt(info.inTyp, unsafe.Pointer(&p[0])).Elem()
-		for i := 1; i < inCount; i++ {
-			in[i] = inArgs.Field(i - 1)
+		if info.variadic {
+			for i := 1; i < inCount-1; i++ {
+				in = append(in, inArgs.Field(i-1))
+			}
+			slice := inArgs.Field(inCount - 2)
+			for i := 0; i < slice.Len(); i++ {
+				in = append(in, slice.Index(i))
+			}
+		} else {
+			for i := 1; i < inCount; i++ {
+				in = append(in, inArgs.Field(i-1))
+			}
 		}
 	}
 	r := method.Func.Call(in)
