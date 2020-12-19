@@ -57,6 +57,7 @@ func MethodOf(styp reflect.Type, methods []Method) reflect.Type {
 			ms = append(ms, m)
 		}
 	}
+	orgtyp := styp
 	if AddVerifyField && styp.Kind() == reflect.Struct {
 		var fs []reflect.StructField
 		for i := 0; i < styp.NumField(); i++ {
@@ -70,14 +71,15 @@ func MethodOf(styp reflect.Type, methods []Method) reflect.Type {
 		styp = NamedStructOf(styp.PkgPath(), styp.Name(), fs)
 	}
 
-	rt, typ := methodOf(styp, nil, ms)
-	prt, _ := methodOf(reflect.PtrTo(styp), typ, methods)
+	rt, typ := methodOf(styp, orgtyp, nil, ms)
+	prt, _ := methodOf(reflect.PtrTo(styp), orgtyp, typ, methods)
 	rt.ptrToThis = resolveReflectType(prt)
 	(*ptrType)(unsafe.Pointer(prt)).elem = rt
+	setTypeName(rt, "main", "Point2")
 	return typ
 }
 
-func methodOf(styp reflect.Type, elem reflect.Type, ms []Method) (*rtype, reflect.Type) {
+func methodOf(styp, orgtyp, elem reflect.Type, ms []Method) (*rtype, reflect.Type) {
 	ptrto := styp.Kind() == reflect.Ptr
 	var methods []method
 	var exported int
@@ -143,11 +145,13 @@ func methodOf(styp reflect.Type, elem reflect.Type, ms []Method) (*rtype, reflec
 		var in []reflect.Type
 		in = append(in, typ)
 		for i := 0; i < mtyp.NumIn(); i++ {
-			in = append(in, mtyp.In(i))
+			t := mtyp.In(i)
+			in = append(in, t)
 		}
 		var out []reflect.Type
 		for i := 0; i < mtyp.NumOut(); i++ {
-			out = append(out, mtyp.Out(i))
+			t := mtyp.Out(i)
+			out = append(out, t)
 		}
 		// rewrite tfn
 		ntyp := reflect.FuncOf(in, out, false)
