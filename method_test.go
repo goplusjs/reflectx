@@ -40,7 +40,10 @@ func TestDynamicPoint(t *testing.T) {
 		reflect.FuncOf([]reflect.Type{styp}, []reflect.Type{styp}, false),
 		func(args []reflect.Value) []reflect.Value {
 			log.Println("--->", args)
-			return nil
+			v := reflectx.New(typ).Elem()
+			v.Field(0).SetInt(args[0].Field(0).Int() + args[1].Field(0).Int())
+			log.Println("----->", typ, v)
+			return []reflect.Value{v}
 		},
 	)
 	typ = reflectx.MethodOf(styp, []*reflectx.Method{
@@ -63,6 +66,9 @@ func TestDynamicPoint(t *testing.T) {
 	//pt1.MethodByName("Add").Call([]reflect.Value{pt2})
 	log.Println(pt1, pt2)
 	//log.Println(image.Point{100, 200})
+	m, _ := reflectx.MethodByName(typ, "Add")
+	v0 := m.Func.Call([]reflect.Value{pt1, pt2})
+	log.Println(v0[0])
 }
 
 func _TestDynamicMethod(t *testing.T) {

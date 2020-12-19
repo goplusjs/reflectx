@@ -10,7 +10,7 @@ import (
 )
 
 var (
-	AddVerifyField  = true
+	AddVerifyField  = false
 	verifyFieldType = reflect.TypeOf(unsafe.Pointer(nil))
 	verifyFieldName = "_reflectx_verify"
 )
@@ -81,6 +81,7 @@ func MethodOf(styp reflect.Type, methods []*Method) reflect.Type {
 	// update methods func type
 	var infos []*methodInfo
 	var pinfos []*methodInfo
+	rms := rt.methods()
 	for index, m := range methods {
 		mtyp := m.Func.Type()
 		var in []reflect.Type
@@ -109,6 +110,7 @@ func MethodOf(styp reflect.Type, methods []*Method) reflect.Type {
 			out = append(out, t)
 		}
 		// rewrite method
+		ttyp := reflect.FuncOf(in[1:], out, false)
 		ntyp := reflect.FuncOf(in, out, false)
 		m.Type = ntyp
 		tovalue(&m.Func).typ = totype(ntyp)
@@ -133,6 +135,7 @@ func MethodOf(styp reflect.Type, methods []*Method) reflect.Type {
 		}
 		outTyp := reflect.StructOf(outFields)
 
+		rms[index].mtyp = resolveReflectType(totype(ttyp))
 		nindex := index
 		info := &methodInfo{
 			inTyp:    inTyp,
@@ -343,6 +346,7 @@ func toElem(typ reflect.Type) reflect.Type {
 func storeValue(v reflect.Value) {
 	ptr := tovalue(&v).ptr
 	ptrTypeMap[ptr] = toElem(v.Type())
+	log.Println("----->store ptr", ptr)
 	if AddVerifyField {
 		if v.Kind() == reflect.Ptr {
 			elem := v.Elem()
