@@ -75,7 +75,6 @@ func MethodOf(styp reflect.Type, methods []Method) reflect.Type {
 	prt, _ := methodOf(reflect.PtrTo(styp), orgtyp, typ, methods)
 	rt.ptrToThis = resolveReflectType(prt)
 	(*ptrType)(unsafe.Pointer(prt)).elem = rt
-	setTypeName(rt, "main", "Point2")
 	return typ
 }
 
