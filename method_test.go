@@ -2,7 +2,6 @@ package reflectx_test
 
 import (
 	"fmt"
-	"image"
 	"log"
 	"reflect"
 	"testing"
@@ -18,7 +17,7 @@ var (
 	iType   = reflect.TypeOf((*interface{})(nil)).Elem()
 )
 
-func _TestDynamicPoint(t *testing.T) {
+func TestDynamicPoint(t *testing.T) {
 	fs := []reflect.StructField{
 		reflect.StructField{Name: "X", Type: reflect.TypeOf(0)},
 		reflect.StructField{Name: "Y", Type: reflect.TypeOf(0)},
@@ -44,10 +43,12 @@ func _TestDynamicPoint(t *testing.T) {
 			return nil
 		},
 	)
-	typ = reflectx.MethodOf(styp, []reflectx.Method{
-		mAdd,
-		mString,
+	typ = reflectx.MethodOf(styp, []*reflectx.Method{
+		&mAdd,
+		&mString,
 	})
+	log.Println("--->", mAdd)
+
 	pt1 := reflectx.New(typ).Elem()
 	pt1.Field(0).SetInt(100)
 	pt1.Field(1).SetInt(200)
@@ -59,12 +60,12 @@ func _TestDynamicPoint(t *testing.T) {
 	log.Println(pt1.Type())
 	log.Println(pt1.MethodByName("Add").Type())
 
-	pt1.MethodByName("Add").Call([]reflect.Value{pt2})
+	//pt1.MethodByName("Add").Call([]reflect.Value{pt2})
 	log.Println(pt1, pt2)
-	log.Println(image.Point{100, 200})
+	//log.Println(image.Point{100, 200})
 }
 
-func TestDynamicMethod(t *testing.T) {
+func _TestDynamicMethod(t *testing.T) {
 	fs := []reflect.StructField{
 		reflect.StructField{Name: "X", Type: reflect.TypeOf(0)},
 		reflect.StructField{Name: "Y", Type: reflect.TypeOf(0)},
@@ -110,11 +111,11 @@ func TestDynamicMethod(t *testing.T) {
 			return []reflect.Value{reflect.ValueOf(int(sum))}
 		})
 
-	typ := reflectx.MethodOf(styp, []reflectx.Method{
-		mString,
-		mSet,
-		mGet,
-		mAppend,
+	typ := reflectx.MethodOf(styp, []*reflectx.Method{
+		&mString,
+		&mSet,
+		&mGet,
+		&mAppend,
 	})
 	ptrType := reflect.PtrTo(typ)
 	for i := 0; i < ptrType.NumMethod(); i++ {

@@ -43,7 +43,7 @@ func MakeMethod(name string, pointer bool, typ reflect.Type, fn func(args []refl
 	}
 }
 
-func MethodOf(styp reflect.Type, methods []Method) reflect.Type {
+func MethodOf(styp reflect.Type, methods []*Method) reflect.Type {
 	sort.Slice(methods, func(i, j int) bool {
 		n := strings.Compare(methods[i].Name, methods[j].Name)
 		if n == 0 {
@@ -51,7 +51,7 @@ func MethodOf(styp reflect.Type, methods []Method) reflect.Type {
 		}
 		return n < 0
 	})
-	var ms []Method
+	var ms []*Method
 	for _, m := range methods {
 		if !m.Pointer {
 			ms = append(ms, m)
@@ -72,13 +72,85 @@ func MethodOf(styp reflect.Type, methods []Method) reflect.Type {
 	}
 
 	rt, typ := methodOf(styp, orgtyp, nil, ms)
-	prt, _ := methodOf(reflect.PtrTo(styp), orgtyp, typ, methods)
+	prt, ptyp := methodOf(reflect.PtrTo(styp), orgtyp, typ, methods)
 	rt.ptrToThis = resolveReflectType(prt)
 	(*ptrType)(unsafe.Pointer(prt)).elem = rt
+
+	SetTypeName(typ, "main", "MyPoint")
+
+	// update methods func type
+	var infos []*methodInfo
+	var pinfos []*methodInfo
+	for index, m := range methods {
+		mtyp := m.Func.Type()
+		var in []reflect.Type
+		if m.Pointer {
+			in = append(in, ptyp)
+		} else {
+			in = append(in, typ)
+		}
+		for i := 0; i < mtyp.NumIn(); i++ {
+			t := mtyp.In(i)
+			if t.Kind() == reflect.Ptr && t.Elem() == orgtyp {
+				t = ptyp
+			} else if t == orgtyp {
+				t = typ
+			}
+			in = append(in, t)
+		}
+		var out []reflect.Type
+		for i := 0; i < mtyp.NumOut(); i++ {
+			t := mtyp.Out(i)
+			if t.Kind() == reflect.Ptr && t.Elem() == orgtyp {
+				t = ptyp
+			} else if t == orgtyp {
+				t = typ
+			}
+			out = append(out, t)
+		}
+		// rewrite method
+		ntyp := reflect.FuncOf(in, out, false)
+		m.Type = ntyp
+		tovalue(&m.Func).typ = totype(ntyp)
+		funcImpl := (*makeFuncImpl)(tovalue(&m.Func).ptr)
+		funcImpl.ftyp = (*funcType)(unsafe.Pointer(totype(ntyp)))
+
+		// rewrite ifn
+		var inFields []reflect.StructField
+		for i := 1; i < len(in); i++ {
+			inFields = append(inFields, reflect.StructField{
+				Name: fmt.Sprintf("Arg%v", i),
+				Type: in[i],
+			})
+		}
+		inTyp := reflect.StructOf(inFields)
+		var outFields []reflect.StructField
+		for i := 0; i < len(out); i++ {
+			outFields = append(outFields, reflect.StructField{
+				Name: fmt.Sprintf("Out%v", i),
+				Type: out[i],
+			})
+		}
+		outTyp := reflect.StructOf(outFields)
+
+		nindex := index
+		info := &methodInfo{
+			inTyp:    inTyp,
+			outTyp:   outTyp,
+			index:    nindex,
+			pointer:  m.Pointer,
+			variadic: m.Type.IsVariadic(),
+		}
+		infos = append(infos, info)
+		pinfos = append(pinfos, info)
+	}
+	typInfoMap[typ] = infos
+	typInfoMap[ptyp] = pinfos
+
 	return typ
 }
 
-func methodOf(styp, orgtyp, elem reflect.Type, ms []Method) (*rtype, reflect.Type) {
+func methodOf(styp, orgtyp, elem reflect.Type, ms []*Method) (*rtype, reflect.Type) {
 	ptrto := styp.Kind() == reflect.Ptr
 	var methods []method
 	var exported int

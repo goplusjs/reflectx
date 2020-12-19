@@ -136,6 +136,10 @@ func emptyType() reflect.Type {
 	return typ
 }
 
+func SetTypeName(typ reflect.Type, pkgpath string, name string) {
+	setTypeName(totype(typ), pkgpath, name)
+}
+
 func setTypeName(t *rtype, pkgpath string, name string) {
 	exported := isExported(name)
 	if pkgpath != "" {
