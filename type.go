@@ -53,6 +53,9 @@ func newName(n, tag string, exported bool) name
 //go:linkname resolveReflectName reflect.resolveReflectName
 func resolveReflectName(n name) nameOff
 
+//go:linkname toType reflect.toType
+func toType(t *rtype) reflect.Type
+
 func (t *rtype) nameOff(off nameOff) name {
 	return name{(*byte)(resolveNameOff(unsafe.Pointer(t), int32(off)))}
 }

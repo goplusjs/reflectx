@@ -35,13 +35,13 @@ func icall(i int, bytes int, ret bool, ptrto bool) (index int, v interface{}) {
 }
 `
 
-var templ_0 = `	func(p uintptr) []byte { return icall_x($index, p, nil, $ptr) },
+var templ_0 = `	func(p uintptr) []byte { return i_x($index, p, nil, $ptr) },
 `
-var templ = `	func(p uintptr, a [$bytes]byte) []byte { return icall_x($index, p, a[:], $ptr) },
+var templ = `	func(p uintptr, a [$bytes]byte) []byte { return i_x($index, p, a[:], $ptr) },
 `
-var templ_n_0 = `	func(p uintptr) { icall_x($index, p, nil, $ptr) },
+var templ_n_0 = `	func(p uintptr) { i_x($index, p, nil, $ptr) },
 `
-var templ_n = `	func(p uintptr, a [$bytes]byte) { icall_x($index, p, a[:], $ptr) },
+var templ_n = `	func(p uintptr, a [$bytes]byte) { i_x($index, p, a[:], $ptr) },
 `
 
 const (

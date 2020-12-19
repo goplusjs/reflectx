@@ -10,9 +10,9 @@ import (
 )
 
 var (
-	EnableVerifyField = true
-	verifyFieldType   = reflect.TypeOf(unsafe.Pointer(nil))
-	verifyFieldName   = "_reflectx_verify"
+	AddVerifyField  = true
+	verifyFieldType = reflect.TypeOf(unsafe.Pointer(nil))
+	verifyFieldName = "_reflectx_verify"
 )
 
 // memmove copies size bytes to dst from src. No write barriers are used.
@@ -57,7 +57,7 @@ func MethodOf(styp reflect.Type, methods []Method) reflect.Type {
 			ms = append(ms, m)
 		}
 	}
-	if EnableVerifyField && styp.Kind() == reflect.Struct {
+	if AddVerifyField && styp.Kind() == reflect.Struct {
 		var fs []reflect.StructField
 		for i := 0; i < styp.NumField(); i++ {
 			fs = append(fs, styp.Field(i))
@@ -141,13 +141,7 @@ func methodOf(styp reflect.Type, elem reflect.Type, ms []Method) (*rtype, reflec
 	for i, m := range ms {
 		mtyp := m.Func.Type()
 		var in []reflect.Type
-
-		// if ptrto && !m.Pointer {
-		// 	in = append(in, typ.Elem())
-		// } else {
 		in = append(in, typ)
-		// }
-
 		for i := 0; i < mtyp.NumIn(); i++ {
 			in = append(in, mtyp.In(i))
 		}
@@ -189,7 +183,7 @@ func methodOf(styp reflect.Type, elem reflect.Type, ms []Method) (*rtype, reflec
 		outTyp := reflect.StructOf(outFields)
 		sz := totype(inTyp).size
 		_, ifn := icall(i, int(sz), len(out) > 0, ptrto)
-		//log.Println("--->", i, index, int(sz), len(out), typ, ntyp, ms[i].Name, em[i].name, ifn, em[i].tfn)
+
 		if ifn == nil {
 			log.Printf("warning cannot wrapper method index:%v, size: %v\n", i, sz)
 		} else {
@@ -274,7 +268,7 @@ func toElem(typ reflect.Type) reflect.Type {
 func storeValue(v reflect.Value) {
 	ptr := tovalue(&v).ptr
 	ptrTypeMap[ptr] = toElem(v.Type())
-	if EnableVerifyField {
+	if AddVerifyField {
 		if v.Kind() == reflect.Ptr {
 			elem := v.Elem()
 			if elem.Kind() == reflect.Struct {
@@ -296,7 +290,7 @@ func foundTypeByPtr(ptr unsafe.Pointer) reflect.Type {
 		v2 := reflect.NewAt(typ, ptr).Elem()
 		v1 := reflect.NewAt(typ, p).Elem()
 		if reflect.DeepEqual(v1.Interface(), v2.Interface()) {
-			if !EnableVerifyField {
+			if !AddVerifyField {
 				log.Printf("no verify, found type %v by %v\n", typ, ptr)
 			}
 			return typ
@@ -305,7 +299,7 @@ func foundTypeByPtr(ptr unsafe.Pointer) reflect.Type {
 	return nil
 }
 
-func icall_x(i int, this uintptr, p []byte, ptrto bool) []byte {
+func i_x(i int, this uintptr, p []byte, ptrto bool) []byte {
 	ptr := unsafe.Pointer(this)
 	typ := foundTypeByPtr(ptr)
 	if typ == nil {
@@ -320,7 +314,6 @@ func icall_x(i int, this uintptr, p []byte, ptrto bool) []byte {
 		log.Println("cannot found type info", typ)
 	}
 	info := infos[i]
-	log.Println("------->", typ, i, info.index)
 	var method reflect.Method
 	if ptrto && !info.pointer {
 		method = MethodByType(typ.Elem(), info.index)
