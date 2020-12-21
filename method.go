@@ -24,7 +24,6 @@ type Method struct {
 	Type    reflect.Type  // method type without receiver
 	Func    reflect.Value // func with receiver as first argument
 	Pointer bool          // receiver is pointer
-	Export  bool          // force export unexported method
 }
 
 // MakeMethod returns a new Method of the given Type
@@ -51,21 +50,13 @@ func MethodOf(styp reflect.Type, methods []Method) reflect.Type {
 		}
 		return n < 0
 	})
-	var mcount, xcount int
-	var pmcount, pxcount int
-	pmcount = len(methods)
+	var mcount, pcount int
+	pcount = len(methods)
 	var mlist []string
 	for _, m := range methods {
-		export := isExported(m.Name) || m.Export
-		if export {
-			pxcount++
-		}
 		if !m.Pointer {
 			mlist = append(mlist, m.Name)
 			mcount++
-			if export {
-				xcount++
-			}
 		}
 	}
 	orgtyp := styp
@@ -81,8 +72,8 @@ func MethodOf(styp reflect.Type, methods []Method) reflect.Type {
 		})
 		styp = NamedStructOf(styp.PkgPath(), styp.Name(), fs)
 	}
-	rt, _ := premakeMethodType(styp, mcount, xcount)
-	prt, _ := premakeMethodType(reflect.PtrTo(styp), pmcount, pxcount)
+	rt, _ := premakeMethodType(styp, mcount, mcount)
+	prt, _ := premakeMethodType(reflect.PtrTo(styp), pcount, pcount)
 	rt.ptrToThis = resolveReflectType(prt)
 	(*ptrType)(unsafe.Pointer(prt)).elem = rt
 	typ := toType(rt)
@@ -94,8 +85,7 @@ func MethodOf(styp reflect.Type, methods []Method) reflect.Type {
 	var index int
 	for i, m := range methods {
 		ptr := tovalue(&m.Func).ptr
-		isexport := m.Export || isExported(m.Name)
-		name := resolveReflectName(newName(m.Name, "", isexport))
+		name := resolveReflectName(newName(m.Name, "", true))
 		in, out, ntyp, inTyp, outTyp := toRealType(typ, orgtyp, m.Type)
 		mtyp := resolveReflectType(totype(ntyp))
 		var ftyp reflect.Type
@@ -247,19 +237,14 @@ func premakeMethodType(styp reflect.Type, mcount int, xcount int) (rt *rtype, tt
 func methodOf(styp, orgtyp, elem reflect.Type, ms []Method) (*rtype, reflect.Type) {
 	ptrto := styp.Kind() == reflect.Ptr
 	var methods []method
-	var exported int
 	for _, m := range ms {
 		ptr := tovalue(&m.Func).ptr
-		isexport := m.Export || isExported(m.Name)
 		methods = append(methods, method{
-			name: resolveReflectName(newName(m.Name, "", isexport)),
+			name: resolveReflectName(newName(m.Name, "", true)),
 			mtyp: resolveReflectType(totype(m.Type)),
 			ifn:  resolveReflectText(unsafe.Pointer(ptr)),
 			tfn:  resolveReflectText(unsafe.Pointer(ptr)),
 		})
-		if isexport {
-			exported++
-		}
 	}
 	if len(methods) == 0 {
 		return totype(styp), styp
@@ -291,7 +276,7 @@ func methodOf(styp, orgtyp, elem reflect.Type, ms []Method) (*rtype, reflect.Typ
 	ut := (*uncommonType)(unsafe.Pointer(tt.Elem().Field(1).UnsafeAddr()))
 	copy(tt.Elem().Field(2).Slice(0, len(methods)).Interface().([]method), methods)
 	ut.mcount = uint16(len(methods))
-	ut.xcount = uint16(exported)
+	ut.xcount = ut.mcount
 	ut.moff = uint32(unsafe.Sizeof(uncommonType{}))
 
 	rt.size = ort.size
@@ -388,7 +373,7 @@ type methodInfo struct {
 	variadic bool
 }
 
-func MethodByType(typ reflect.Type, index int) reflect.Method {
+func MethodByIndex(typ reflect.Type, index int) reflect.Method {
 	m := typ.Method(index)
 	if typ.Kind() == reflect.Ptr {
 		typ = typ.Elem()
@@ -405,7 +390,6 @@ func MethodByName(typ reflect.Type, name string) (m reflect.Method, ok bool) {
 		return
 	}
 	if typ.Kind() == reflect.Ptr {
-		log.Println("------", m)
 		typ = typ.Elem()
 	}
 	if _, ok := ntypeMap[typ]; ok {
@@ -493,9 +477,9 @@ func i_x(i int, this uintptr, p []byte, ptrto bool) []byte {
 	info := infos[i]
 	var method reflect.Method
 	if ptrto && !info.pointer {
-		method = MethodByType(typ.Elem(), info.index)
+		method = MethodByIndex(typ.Elem(), info.index)
 	} else {
-		method = MethodByType(typ, info.index)
+		method = MethodByIndex(typ, info.index)
 	}
 	var in []reflect.Value
 	var receiver reflect.Value
