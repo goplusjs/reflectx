@@ -341,3 +341,16 @@ func (t *rtype) IsVariadic() bool {
 	tt := (*funcType)(unsafe.Pointer(t))
 	return tt.outCount&(1<<15) != 0
 }
+
+type makeFuncImpl struct {
+	code   uintptr
+	stack  *bitVector // ptrmap for both args and results
+	argLen uintptr    // just args
+	ftyp   *funcType
+	fn     func([]reflect.Value) []reflect.Value
+}
+
+type bitVector struct {
+	n    uint32 // number of bits
+	data []byte
+}

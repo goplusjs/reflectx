@@ -17,10 +17,6 @@ var (
 	verifyFieldType = reflect.TypeOf(unsafe.Pointer(nil))
 )
 
-// memmove copies size bytes to dst from src. No write barriers are used.
-//go:linkname memmove reflect.memmove
-func memmove(dst, src unsafe.Pointer, size uintptr)
-
 type Method struct {
 	Name    string        // method Name
 	Type    reflect.Type  // method type without receiver
@@ -281,19 +277,6 @@ func MethodByName(typ reflect.Type, name string) (m reflect.Method, ok bool) {
 		tovalue(&m.Func).flag |= flagIndir
 	}
 	return
-}
-
-type makeFuncImpl struct {
-	code   uintptr
-	stack  *bitVector // ptrmap for both args and results
-	argLen uintptr    // just args
-	ftyp   *funcType
-	fn     func([]reflect.Value) []reflect.Value
-}
-
-type bitVector struct {
-	n    uint32 // number of bits
-	data []byte
 }
 
 func New(typ reflect.Type) reflect.Value {

@@ -56,15 +56,31 @@ func TestDynamicPoint(t *testing.T) {
 			return
 		},
 	)
+	mTestv := reflectx.MakeMethod(
+		"Testv",
+		false,
+		reflect.FuncOf([]reflect.Type{reflect.SliceOf(intTyp)}, []reflect.Type{intTyp}, true),
+		func(args []reflect.Value) (result []reflect.Value) {
+			var sum int64 = args[0].Field(0).Int() + args[0].Field(1).Int()
+			for i := 0; i < args[1].Len(); i++ {
+				sum += args[1].Index(i).Int()
+			}
+			return []reflect.Value{reflect.ValueOf(int(sum))}
+		},
+	)
 	typ = reflectx.MethodOf(styp, []reflectx.Method{
 		mAdd,
 		mString,
 		mSet,
+		mTestv,
 	}, false)
 	ptrType := reflect.PtrTo(typ)
 
-	for i := 0; i < typ.NumMethod(); i++ {
-		log.Println(typ.Method(i))
+	if n := typ.NumMethod(); n != 3 {
+		t.Fatal("typ.NumMethod()", n)
+	}
+	if n := ptrType.NumMethod(); n != 4 {
+		t.Fatal("ptrTyp.NumMethod()", n)
 	}
 
 	pt1 := reflectx.New(typ).Elem()
@@ -75,30 +91,57 @@ func TestDynamicPoint(t *testing.T) {
 	pt2.Field(0).SetInt(300)
 	pt2.Field(1).SetInt(400)
 
-	// log.Println(pt1.MethodByName("String").Call(nil))
+	// String
+	if v := fmt.Sprint(pt1); v != "(100,200)" {
+		t.Fatalf("String(): have %v, want (100,200)", v)
+	}
+	if v := fmt.Sprint(pt1.Addr()); v != "(100,200)" {
+		t.Fatalf("ptrTyp String(): have %v, want (100,200)", v)
+	}
 
-	log.Println(pt1, pt2)
-
+	// typ Add
 	m, _ := reflectx.MethodByName(typ, "Add")
 	r0 := m.Func.Call([]reflect.Value{pt1, pt2})
-	log.Println("tfn", r0[0])
+	if v := fmt.Sprint(r0[0]); v != "(400,600)" {
+		t.Fatalf("type reflectx.MethodByName Add: have %v, want (400,600)", v)
+	}
 	r0 = pt1.MethodByName("Add").Call([]reflect.Value{pt2})
-	log.Println("ifn", r0[0])
+	if v := fmt.Sprint(r0[0]); v != "(400,600)" {
+		t.Fatalf("value.MethodByName Add: have %v, want (400,600)", v)
+	}
 
-	// // ptrtype
-	m, _ = reflectx.MethodByName(reflect.PtrTo(typ), "Add")
+	// ptrtyp Add
+	m, _ = reflectx.MethodByName(ptrType, "Add")
 	r0 = m.Func.Call([]reflect.Value{pt1.Addr(), pt2})
-	log.Println("addr tfn", r0[0])
+	if v := fmt.Sprint(r0[0]); v != "(400,600)" {
+		t.Fatalf("ptrType reflectx.MethodByName Add: have %v, want (400,600)", v)
+	}
 	r0 = pt1.Addr().MethodByName("Add").Call([]reflect.Value{pt2})
-	log.Println("addr ifn", r0[0])
+	if v := fmt.Sprint(r0[0]); v != "(400,600)" {
+		t.Fatalf("ptrType value.reflectx.MethodByName Add: have %v, want (400,600)", v)
+	}
 
-	// //return
+	// Set
 	m0, _ := reflectx.MethodByName(ptrType, "Set")
-	log.Println("addr tfn", m0)
 	m0.Func.Call([]reflect.Value{pt1.Addr(), reflect.ValueOf(-100), reflect.ValueOf(-200)})
-	log.Println(pt1, pt1.Addr())
+	if v := fmt.Sprint(pt1); v != "(-100,-200)" {
+		t.Fatalf("ptrType reflectx.MethodByName Set: have %v, want (-100,-200)", v)
+	}
 	pt1.Addr().MethodByName("Set").Call([]reflect.Value{reflect.ValueOf(1), reflect.ValueOf(2)})
-	log.Println(pt1, pt1.Addr())
+	if v := fmt.Sprint(pt1); v != "(1,2)" {
+		t.Fatalf("ptrType reflectx.MethodByName Set: have %v, want (1,2)", v)
+	}
+
+	// Testv
+	m0, _ = reflectx.MethodByName(typ, "Testv")
+	r0 = m0.Func.Call([]reflect.Value{pt2, reflect.ValueOf(200), reflect.ValueOf(300), reflect.ValueOf(400)})
+	if v := r0[0].Int(); v != 1600 {
+		t.Fatalf("typ reflectx.MethodByName Testv: have %v, want 1600", v)
+	}
+	r0 = pt2.MethodByName("Testv").Call([]reflect.Value{reflect.ValueOf(200), reflect.ValueOf(300), reflect.ValueOf(400)})
+	if v := r0[0].Int(); v != 1600 {
+		t.Fatalf("typ value.MethodByName Testv: have %v, want 1600", v)
+	}
 }
 
 func TestDynamicMethod(t *testing.T) {
