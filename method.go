@@ -9,10 +9,12 @@ import (
 	"unsafe"
 )
 
+const (
+	VerifyFieldName = "_reflectx_verify"
+)
+
 var (
-	AddVerifyField  = true
 	verifyFieldType = reflect.TypeOf(unsafe.Pointer(nil))
-	verifyFieldName = "_reflectx_verify"
 )
 
 // memmove copies size bytes to dst from src. No write barriers are used.
@@ -42,7 +44,7 @@ func MakeMethod(name string, pointer bool, typ reflect.Type, fn func(args []refl
 	}
 }
 
-func MethodOf(styp reflect.Type, methods []Method) reflect.Type {
+func MethodOf(styp reflect.Type, methods []Method, addVerifyField bool) reflect.Type {
 	sort.Slice(methods, func(i, j int) bool {
 		n := strings.Compare(methods[i].Name, methods[j].Name)
 		if n == 0 {
@@ -60,17 +62,25 @@ func MethodOf(styp reflect.Type, methods []Method) reflect.Type {
 		}
 	}
 	orgtyp := styp
-	if AddVerifyField && styp.Kind() == reflect.Struct {
+	if addVerifyField && styp.Kind() == reflect.Struct {
 		var fs []reflect.StructField
+		var skip bool
 		for i := 0; i < styp.NumField(); i++ {
-			fs = append(fs, styp.Field(i))
+			field := styp.Field(i)
+			if field.Name == VerifyFieldName {
+				skip = true
+				break
+			}
+			fs = append(fs, field)
 		}
-		fs = append(fs, reflect.StructField{
-			Name:    verifyFieldName,
-			PkgPath: "main",
-			Type:    verifyFieldType,
-		})
-		styp = NamedStructOf(styp.PkgPath(), styp.Name(), fs)
+		if !skip {
+			fs = append(fs, reflect.StructField{
+				Name:    VerifyFieldName,
+				PkgPath: "main",
+				Type:    verifyFieldType,
+			})
+			styp = NamedStructOf(styp.PkgPath(), styp.Name(), fs)
+		}
 	}
 	rt, _ := premakeMethodType(styp, mcount, mcount)
 	prt, _ := premakeMethodType(reflect.PtrTo(styp), pcount, pcount)
@@ -96,8 +106,8 @@ func MethodOf(styp reflect.Type, methods []Method) reflect.Type {
 		}
 		funcImpl := (*makeFuncImpl)(tovalue(&m.Func).ptr)
 		funcImpl.ftyp = (*funcType)(unsafe.Pointer(totype(ftyp)))
-		sz := totype(inTyp).size
-		_, ifunc := icall(i, int(sz), m.Type.NumOut() > 0, true)
+		sz := int(inTyp.Size())
+		_, ifunc := icall(i, sz, m.Type.NumOut() > 0, true)
 		var pifn, tfn, ptfn textOff
 		if ifunc == nil {
 			log.Printf("warning cannot wrapper method index:%v, size: %v\n", i, sz)
@@ -234,131 +244,6 @@ func premakeMethodType(styp reflect.Type, mcount int, xcount int) (rt *rtype, tt
 	return
 }
 
-func methodOf(styp, orgtyp, elem reflect.Type, ms []Method) (*rtype, reflect.Type) {
-	ptrto := styp.Kind() == reflect.Ptr
-	var methods []method
-	for _, m := range ms {
-		ptr := tovalue(&m.Func).ptr
-		methods = append(methods, method{
-			name: resolveReflectName(newName(m.Name, "", true)),
-			mtyp: resolveReflectType(totype(m.Type)),
-			ifn:  resolveReflectText(unsafe.Pointer(ptr)),
-			tfn:  resolveReflectText(unsafe.Pointer(ptr)),
-		})
-	}
-	if len(methods) == 0 {
-		return totype(styp), styp
-	}
-	ort := totype(styp)
-	var tt reflect.Value
-	var rt *rtype
-	switch styp.Kind() {
-	case reflect.Struct:
-		tt = reflect.New(reflect.StructOf([]reflect.StructField{
-			{Name: "S", Type: reflect.TypeOf(structType{})},
-			{Name: "U", Type: reflect.TypeOf(uncommonType{})},
-			{Name: "M", Type: reflect.ArrayOf(len(methods), reflect.TypeOf(methods[0]))},
-		}))
-		st := (*structType)(unsafe.Pointer(tt.Elem().Field(0).UnsafeAddr()))
-		ost := toStructType(ort)
-		st.fields = ost.fields
-		rt = (*rtype)(unsafe.Pointer(st))
-	case reflect.Ptr:
-		tt = reflect.New(reflect.StructOf([]reflect.StructField{
-			{Name: "S", Type: reflect.TypeOf(ptrType{})},
-			{Name: "U", Type: reflect.TypeOf(uncommonType{})},
-			{Name: "M", Type: reflect.ArrayOf(len(methods), reflect.TypeOf(methods[0]))},
-		}))
-		st := (*ptrType)(unsafe.Pointer(tt.Elem().Field(0).UnsafeAddr()))
-		rt = (*rtype)(unsafe.Pointer(st))
-		st.elem = ((*ptrType)(unsafe.Pointer(ort))).elem
-	}
-	ut := (*uncommonType)(unsafe.Pointer(tt.Elem().Field(1).UnsafeAddr()))
-	copy(tt.Elem().Field(2).Slice(0, len(methods)).Interface().([]method), methods)
-	ut.mcount = uint16(len(methods))
-	ut.xcount = ut.mcount
-	ut.moff = uint32(unsafe.Sizeof(uncommonType{}))
-
-	rt.size = ort.size
-	rt.tflag = ort.tflag | tflagUncommon
-	rt.kind = ort.kind
-	rt.fieldAlign = ort.fieldAlign
-	rt.str = resolveReflectName(ort.nameOff(ort.str))
-
-	typ := toType(rt)
-
-	// update receiver type, rewrite tfn&ifn
-	em := rt.exportedMethods()
-	var infos []*methodInfo
-	for i, m := range ms {
-		mtyp := m.Func.Type()
-		var in []reflect.Type
-		in = append(in, typ)
-		for i := 0; i < mtyp.NumIn(); i++ {
-			t := mtyp.In(i)
-			in = append(in, t)
-		}
-		var out []reflect.Type
-		for i := 0; i < mtyp.NumOut(); i++ {
-			t := mtyp.Out(i)
-			out = append(out, t)
-		}
-		// rewrite tfn
-		ntyp := reflect.FuncOf(in, out, false)
-		nindex := i
-		if ptrto && !m.Pointer {
-			mm, _ := elem.MethodByName(m.Name)
-			nindex = mm.Index
-			cv := reflect.MakeFunc(ntyp, func(args []reflect.Value) (results []reflect.Value) {
-				return args[0].Elem().Method(nindex).Call(args[1:])
-			})
-			em[i].tfn = resolveReflectText(tovalue(&cv).ptr)
-		} else {
-			funcImpl := (*makeFuncImpl)(tovalue(&m.Func).ptr)
-			funcImpl.ftyp = (*funcType)(unsafe.Pointer(totype(ntyp)))
-		}
-
-		// rewrite ifn
-		var inFields []reflect.StructField
-		for i := 1; i < len(in); i++ {
-			inFields = append(inFields, reflect.StructField{
-				Name: fmt.Sprintf("Arg%v", i),
-				Type: in[i],
-			})
-		}
-		inTyp := reflect.StructOf(inFields)
-		var outFields []reflect.StructField
-		for i := 0; i < len(out); i++ {
-			outFields = append(outFields, reflect.StructField{
-				Name: fmt.Sprintf("Out%v", i),
-				Type: out[i],
-			})
-		}
-		outTyp := reflect.StructOf(outFields)
-		sz := totype(inTyp).size
-		_, ifn := icall(i, int(sz), len(out) > 0, ptrto)
-
-		if ifn == nil {
-			log.Printf("warning cannot wrapper method index:%v, size: %v\n", i, sz)
-		} else {
-			em[i].ifn = resolveReflectText(unsafe.Pointer(reflect.ValueOf(ifn).Pointer()))
-		}
-		infos = append(infos, &methodInfo{
-			inTyp:    inTyp,
-			outTyp:   outTyp,
-			index:    nindex,
-			pointer:  m.Pointer,
-			variadic: m.Type.IsVariadic(),
-		})
-	}
-	typInfoMap[typ] = infos
-
-	nt := &Named{Name: styp.Name(), PkgPath: styp.PkgPath(), Type: typ, Kind: TkStruct}
-	ntypeMap[typ] = nt
-
-	return rt, typ
-}
-
 var (
 	typInfoMap = make(map[reflect.Type][]*methodInfo)
 	ptrTypeMap = make(map[unsafe.Pointer]reflect.Type)
@@ -429,40 +314,54 @@ func toElem(typ reflect.Type) reflect.Type {
 func storeValue(v reflect.Value) {
 	ptr := tovalue(&v).ptr
 	ptrTypeMap[ptr] = toElem(v.Type())
-	if AddVerifyField {
-		if v.Kind() == reflect.Ptr {
-			elem := v.Elem()
-			if elem.Kind() == reflect.Struct {
-				item := FieldByName(v.Elem(), verifyFieldName)
-				if item.IsValid() {
-					item.SetPointer(ptr)
-				}
-			}
+
+	// check verify field
+	if v.Kind() == reflect.Ptr {
+		v = v.Elem()
+	}
+	if v.Kind() == reflect.Struct {
+		item := FieldByName(v, VerifyFieldName)
+		if item.IsValid() {
+			item.SetPointer(ptr)
 		}
 	}
 }
 
-func foundTypeByPtr(ptr unsafe.Pointer) reflect.Type {
+func foundTypeByPtr(ptr unsafe.Pointer, index int, insize int) reflect.Type {
 	typ, ok := ptrTypeMap[ptr]
 	if ok {
 		return typ
 	}
+	checkMap := make(map[reflect.Type]bool)
+	var matches []reflect.Type
 	for p, typ := range ptrTypeMap {
 		v2 := reflect.NewAt(typ, ptr).Elem()
 		v1 := reflect.NewAt(typ, p).Elem()
 		if reflect.DeepEqual(v1.Interface(), v2.Interface()) {
-			if !AddVerifyField {
-				log.Printf("no verify, found type %v by %v\n", typ, ptr)
+			if _, ok := typ.FieldByName(VerifyFieldName); ok {
+				return typ
 			}
-			return typ
+			if !checkMap[typ] {
+				checkMap[typ] = true
+				infos := typInfoMap[typ]
+				if len(infos) > index && int(infos[index].inTyp.Size()) == insize {
+					matches = append(matches, typ)
+				}
+			}
 		}
+	}
+	n := len(matches)
+	if n == 1 {
+		return matches[0]
+	} else if n > 1 {
+		log.Println("warring, multiple matches found, please add verify field.", matches)
 	}
 	return nil
 }
 
 func i_x(i int, this uintptr, p []byte, ptrto bool) []byte {
 	ptr := unsafe.Pointer(this)
-	typ := foundTypeByPtr(ptr)
+	typ := foundTypeByPtr(ptr, i, len(p))
 	if typ == nil {
 		log.Println("cannot found ptr type", ptr)
 		return nil

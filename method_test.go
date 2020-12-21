@@ -60,7 +60,7 @@ func TestDynamicPoint(t *testing.T) {
 		mAdd,
 		mString,
 		mSet,
-	})
+	}, false)
 	ptrType := reflect.PtrTo(typ)
 
 	for i := 0; i < typ.NumMethod(); i++ {
@@ -152,7 +152,7 @@ func TestDynamicMethod(t *testing.T) {
 		mSet,
 		mGet,
 		mAppend,
-	})
+	}, false)
 	ptrType := reflect.PtrTo(typ)
 	for i := 0; i < ptrType.NumMethod(); i++ {
 		log.Println("ptr", ptrType.Method(i))
