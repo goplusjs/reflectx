@@ -2,7 +2,6 @@ package reflectx_test
 
 import (
 	"fmt"
-	"image"
 	"log"
 	"reflect"
 	"testing"
@@ -18,7 +17,7 @@ var (
 	iType   = reflect.TypeOf((*interface{})(nil)).Elem()
 )
 
-func _TestDynamicPoint(t *testing.T) {
+func TestDynamicPoint(t *testing.T) {
 	fs := []reflect.StructField{
 		reflect.StructField{Name: "X", Type: reflect.TypeOf(0)},
 		reflect.StructField{Name: "Y", Type: reflect.TypeOf(0)},
@@ -30,6 +29,7 @@ func _TestDynamicPoint(t *testing.T) {
 		false,
 		reflect.FuncOf(nil, []reflect.Type{strTyp}, false),
 		func(args []reflect.Value) []reflect.Value {
+			log.Println("---->call String", args)
 			v := args[0]
 			info := fmt.Sprintf("(%v,%v)", v.Field(0), v.Field(1))
 			return []reflect.Value{reflect.ValueOf(info)}
@@ -40,28 +40,70 @@ func _TestDynamicPoint(t *testing.T) {
 		false,
 		reflect.FuncOf([]reflect.Type{styp}, []reflect.Type{styp}, false),
 		func(args []reflect.Value) []reflect.Value {
-			log.Println("--->", args)
-			return nil
+			log.Println("---->call Add", args)
+			v := reflectx.New(typ).Elem()
+			v.Field(0).SetInt(args[0].Field(0).Int() + args[1].Field(0).Int())
+			v.Field(1).SetInt(args[0].Field(1).Int() + args[1].Field(1).Int())
+			return []reflect.Value{v}
+		},
+	)
+	mSet := reflectx.MakeMethod(
+		"Set",
+		true,
+		reflect.FuncOf([]reflect.Type{intTyp, intTyp}, nil, false),
+		func(args []reflect.Value) (result []reflect.Value) {
+			log.Println("---->call Set", args)
+			v := args[0].Elem()
+			v.Field(0).Set(args[1])
+			v.Field(1).Set(args[2])
+			return
 		},
 	)
 	typ = reflectx.MethodOf(styp, []reflectx.Method{
 		mAdd,
 		mString,
+		mSet,
 	})
+	//	ptrType := reflect.PtrTo(typ)
+
+	for i := 0; i < typ.NumMethod(); i++ {
+		log.Println(typ.Method(i))
+	}
+
 	pt1 := reflectx.New(typ).Elem()
 	pt1.Field(0).SetInt(100)
 	pt1.Field(1).SetInt(200)
 
-	pt2 := reflectx.New(typ).Elem()
-	pt2.Field(0).SetInt(300)
-	pt2.Field(1).SetInt(400)
+	// pt2 := reflectx.New(typ).Elem()
+	// pt2.Field(0).SetInt(300)
+	// pt2.Field(1).SetInt(400)
 
-	log.Println(pt1.Type())
-	log.Println(pt1.MethodByName("Add").Type())
+	// log.Println(pt1.MethodByName("String").Call(nil))
 
-	pt1.MethodByName("Add").Call([]reflect.Value{pt2})
-	log.Println(pt1, pt2)
-	log.Println(image.Point{100, 200})
+	// log.Println(pt1, pt2)
+
+	// m, _ := reflectx.MethodByName(typ, "Add")
+	// r0 := m.Func.Call([]reflect.Value{pt1, pt2})
+	// log.Println("tfn", r0[0])
+	// r0 = pt1.MethodByName("Add").Call([]reflect.Value{pt2})
+	// log.Println("ifn", r0[0])
+
+	// // ptrtype
+	// m, _ = reflectx.MethodByName(reflect.PtrTo(typ), "Add")
+	// r0 = m.Func.Call([]reflect.Value{pt1.Addr(), pt2})
+	// log.Println("addr tfn", r0[0])
+	// r0 := pt1.Addr().MethodByName("Add").Call([]reflect.Value{pt2})
+	// log.Println("addr ifn", r0[0])
+
+	// //return
+	// log.Println("--->", pt1.Addr().MethodByName("Set").Type())
+	// //log.Println("set", pt1)
+	// m0, _ := reflectx.MethodByName(ptrType, "Set")
+	// log.Println("addr tfn", m0)
+	// m0.Func.Call([]reflect.Value{pt1.Addr(), reflect.ValueOf(-100), reflect.ValueOf(-200)})
+	// log.Println("--->", pt1)
+	pt1.Addr().MethodByName("Set").Call([]reflect.Value{reflect.ValueOf(1), reflect.ValueOf(2)})
+	log.Println(pt1, pt1.Addr())
 }
 
 func TestDynamicMethod(t *testing.T) {

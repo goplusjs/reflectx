@@ -51,10 +51,21 @@ func MethodOf(styp reflect.Type, methods []Method) reflect.Type {
 		}
 		return n < 0
 	})
-	var ms []Method
+	var mcount, xcount int
+	var pmcount, pxcount int
+	pmcount = len(methods)
+	var mlist []string
 	for _, m := range methods {
+		export := isExported(m.Name) || m.Export
+		if export {
+			pxcount++
+		}
 		if !m.Pointer {
-			ms = append(ms, m)
+			mlist = append(mlist, m.Name)
+			mcount++
+			if export {
+				xcount++
+			}
 		}
 	}
 	orgtyp := styp
@@ -70,12 +81,167 @@ func MethodOf(styp reflect.Type, methods []Method) reflect.Type {
 		})
 		styp = NamedStructOf(styp.PkgPath(), styp.Name(), fs)
 	}
-
-	rt, typ := methodOf(styp, orgtyp, nil, ms)
-	prt, _ := methodOf(reflect.PtrTo(styp), orgtyp, typ, methods)
+	rt, _ := premakeMethodType(styp, mcount, xcount)
+	prt, _ := premakeMethodType(reflect.PtrTo(styp), pmcount, pxcount)
 	rt.ptrToThis = resolveReflectType(prt)
 	(*ptrType)(unsafe.Pointer(prt)).elem = rt
+	typ := toType(rt)
+	ptyp := reflect.PtrTo(typ)
+	ms := rt.methods()
+	pms := prt.methods()
+	var infos []*methodInfo
+	var pinfos []*methodInfo
+	var index int
+	for i, m := range methods {
+		ptr := tovalue(&m.Func).ptr
+		isexport := m.Export || isExported(m.Name)
+		name := resolveReflectName(newName(m.Name, "", isexport))
+		in, out, ntyp, inTyp, outTyp := toRealType(typ, orgtyp, m.Type)
+		mtyp := resolveReflectType(totype(ntyp))
+		var ftyp reflect.Type
+		if m.Pointer {
+			ftyp = reflect.FuncOf(append([]reflect.Type{ptyp}, in...), out, m.Type.IsVariadic())
+		} else {
+			ftyp = reflect.FuncOf(append([]reflect.Type{typ}, in...), out, m.Type.IsVariadic())
+		}
+		funcImpl := (*makeFuncImpl)(tovalue(&m.Func).ptr)
+		funcImpl.ftyp = (*funcType)(unsafe.Pointer(totype(ftyp)))
+		sz := totype(inTyp).size
+		_, ifunc := icall(i, int(sz), m.Type.NumOut() > 0, true)
+		var pifn, tfn, ptfn textOff
+		if ifunc == nil {
+			log.Printf("warning cannot wrapper method index:%v, size: %v\n", i, sz)
+		} else {
+			pifn = resolveReflectText(unsafe.Pointer(reflect.ValueOf(ifunc).Pointer()))
+		}
+		tfn = resolveReflectText(unsafe.Pointer(ptr))
+		pindex := i
+		if !m.Pointer {
+			for i, s := range mlist {
+				if s == m.Name {
+					pindex = i
+					break
+				}
+			}
+			ctyp := reflect.FuncOf(append([]reflect.Type{ptyp}, in...), out, m.Type.IsVariadic())
+			cv := reflect.MakeFunc(ctyp, func(args []reflect.Value) (results []reflect.Value) {
+				return args[0].Elem().Method(pindex).Call(args[1:])
+			})
+			ptfn = resolveReflectText(tovalue(&cv).ptr)
+		} else {
+			ptfn = tfn
+		}
+
+		pms[i].name = name
+		pms[i].mtyp = mtyp
+		pms[i].tfn = ptfn
+		pms[i].ifn = pifn
+		pinfos = append(pinfos, &methodInfo{
+			inTyp:    inTyp,
+			outTyp:   outTyp,
+			name:     m.Name,
+			index:    pindex,
+			pointer:  m.Pointer,
+			variadic: m.Type.IsVariadic(),
+		})
+		if !m.Pointer {
+			_, ifunc := icall(index, int(sz), m.Type.NumOut() > 0, false)
+			var ifn textOff
+			if ifunc == nil {
+				log.Printf("warning cannot wrapper method index:%v, size: %v\n", i, sz)
+			} else {
+				ifn = resolveReflectText(unsafe.Pointer(reflect.ValueOf(ifunc).Pointer()))
+			}
+			ms[index].name = name
+			ms[index].mtyp = mtyp
+			ms[index].tfn = tfn
+			ms[index].ifn = ifn
+			infos = append(infos, &methodInfo{
+				inTyp:    inTyp,
+				outTyp:   outTyp,
+				name:     m.Name,
+				index:    index,
+				pointer:  m.Pointer,
+				variadic: m.Type.IsVariadic(),
+			})
+			index++
+		}
+	}
+	typInfoMap[typ] = infos
+	typInfoMap[ptyp] = pinfos
+	nt := &Named{Name: styp.Name(), PkgPath: styp.PkgPath(), Type: typ, Kind: TkStruct}
+	ntypeMap[typ] = nt
 	return typ
+}
+
+func toRealType(typ, orgtyp, mtyp reflect.Type) (in, out []reflect.Type, ntyp, inTyp, outTyp reflect.Type) {
+	fn := func(t reflect.Type) reflect.Type {
+		if t == orgtyp {
+			return typ
+		} else if t.Kind() == reflect.Ptr && t.Elem() == orgtyp {
+			return reflect.PtrTo(typ)
+		}
+		return t
+	}
+	var inFields []reflect.StructField
+	var outFields []reflect.StructField
+	for i := 0; i < mtyp.NumIn(); i++ {
+		t := fn(mtyp.In(i))
+		in = append(in, t)
+		inFields = append(inFields, reflect.StructField{
+			Name: fmt.Sprintf("Arg%v", i),
+			Type: t,
+		})
+	}
+	for i := 0; i < mtyp.NumOut(); i++ {
+		t := fn(mtyp.Out(i))
+		out = append(out, t)
+		outFields = append(outFields, reflect.StructField{
+			Name: fmt.Sprintf("Out%v", i),
+			Type: t,
+		})
+	}
+	ntyp = reflect.FuncOf(in, out, mtyp.IsVariadic())
+	inTyp = reflect.StructOf(inFields)
+	outTyp = reflect.StructOf(outFields)
+	return
+}
+
+func premakeMethodType(styp reflect.Type, mcount int, xcount int) (rt *rtype, tt reflect.Value) {
+	ort := totype(styp)
+	switch styp.Kind() {
+	case reflect.Struct:
+		tt = reflect.New(reflect.StructOf([]reflect.StructField{
+			{Name: "S", Type: reflect.TypeOf(structType{})},
+			{Name: "U", Type: reflect.TypeOf(uncommonType{})},
+			{Name: "M", Type: reflect.ArrayOf(mcount, reflect.TypeOf(method{}))},
+		}))
+		st := (*structType)(unsafe.Pointer(tt.Elem().Field(0).UnsafeAddr()))
+		ost := toStructType(ort)
+		st.fields = ost.fields
+		rt = (*rtype)(unsafe.Pointer(st))
+	case reflect.Ptr:
+		tt = reflect.New(reflect.StructOf([]reflect.StructField{
+			{Name: "S", Type: reflect.TypeOf(ptrType{})},
+			{Name: "U", Type: reflect.TypeOf(uncommonType{})},
+			{Name: "M", Type: reflect.ArrayOf(mcount, reflect.TypeOf(method{}))},
+		}))
+		st := (*ptrType)(unsafe.Pointer(tt.Elem().Field(0).UnsafeAddr()))
+		rt = (*rtype)(unsafe.Pointer(st))
+	}
+	ut := (*uncommonType)(unsafe.Pointer(tt.Elem().Field(1).UnsafeAddr()))
+	// copy(tt.Elem().Field(2).Slice(0, len(methods)).Interface().([]method), methods)
+	ut.mcount = uint16(mcount)
+	ut.xcount = uint16(xcount)
+	ut.moff = uint32(unsafe.Sizeof(uncommonType{}))
+
+	rt.size = ort.size
+	rt.tflag = ort.tflag | tflagUncommon
+	rt.kind = ort.kind
+	rt.align = ort.align
+	rt.fieldAlign = ort.fieldAlign
+	rt.str = resolveReflectName(ort.nameOff(ort.str))
+	return
 }
 
 func methodOf(styp, orgtyp, elem reflect.Type, ms []Method) (*rtype, reflect.Type) {
@@ -216,6 +382,7 @@ var (
 type methodInfo struct {
 	inTyp    reflect.Type
 	outTyp   reflect.Type
+	name     string
 	index    int
 	pointer  bool
 	variadic bool
@@ -223,6 +390,9 @@ type methodInfo struct {
 
 func MethodByType(typ reflect.Type, index int) reflect.Method {
 	m := typ.Method(index)
+	if typ.Kind() == reflect.Ptr {
+		typ = typ.Elem()
+	}
 	if _, ok := ntypeMap[typ]; ok {
 		tovalue(&m.Func).flag |= flagIndir
 	}
@@ -233,6 +403,10 @@ func MethodByName(typ reflect.Type, name string) (m reflect.Method, ok bool) {
 	m, ok = typ.MethodByName(name)
 	if !ok {
 		return
+	}
+	if typ.Kind() == reflect.Ptr {
+		log.Println("------", m)
+		typ = typ.Elem()
 	}
 	if _, ok := ntypeMap[typ]; ok {
 		tovalue(&m.Func).flag |= flagIndir
