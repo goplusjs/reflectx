@@ -2,7 +2,6 @@ package reflectx_test
 
 import (
 	"fmt"
-	"log"
 	"reflect"
 	"testing"
 
@@ -17,7 +16,79 @@ var (
 	iType   = reflect.TypeOf((*interface{})(nil)).Elem()
 )
 
-func TestDynamicPoint(t *testing.T) {
+func TestIntMethodOf(t *testing.T) {
+	styp := reflectx.NamedTypeOf("main", "MyInt", intTyp)
+	var typ reflect.Type
+	mString := reflectx.MakeMethod(
+		"String",
+		false,
+		reflect.FuncOf(nil, []reflect.Type{strTyp}, false),
+		func(args []reflect.Value) []reflect.Value {
+			v := args[0]
+			info := fmt.Sprintf("(%d)", v.Int())
+			return []reflect.Value{reflect.ValueOf(info)}
+		},
+	)
+	mSet := reflectx.MakeMethod(
+		"Set",
+		true,
+		reflect.FuncOf([]reflect.Type{intTyp}, nil, false),
+		func(args []reflect.Value) (result []reflect.Value) {
+			v := args[0].Elem()
+			v.SetInt(args[1].Int())
+			return
+		},
+	)
+	mAppend := reflectx.MakeMethod(
+		"Append",
+		false,
+		reflect.FuncOf([]reflect.Type{reflect.SliceOf(intTyp)}, []reflect.Type{intTyp}, true),
+		func(args []reflect.Value) (result []reflect.Value) {
+			var sum int64 = args[0].Int()
+			for i := 0; i < args[1].Len(); i++ {
+				sum += args[1].Index(i).Int()
+			}
+			return []reflect.Value{reflect.ValueOf(int(sum))}
+		},
+	)
+	typ = reflectx.MethodOf(styp, []reflectx.Method{
+		mString,
+		mSet,
+		mAppend,
+	}, false)
+	ptrType := reflect.PtrTo(typ)
+
+	if n := typ.NumMethod(); n != 2 {
+		t.Fatal("typ.NumMethod()", n)
+	}
+	if n := ptrType.NumMethod(); n != 3 {
+		t.Fatal("ptrTyp.NumMethod()", n)
+	}
+
+	pv := reflectx.New(typ).Elem()
+
+	pv.Addr().MethodByName("Set").Call([]reflect.Value{reflect.ValueOf(100)})
+
+	if v := fmt.Sprint(pv); v != "(100)" {
+		t.Fatalf("String(): have %v, want (100)", v)
+	}
+	if v := fmt.Sprint(pv.Addr()); v != "(100)" {
+		t.Fatalf("ptrTyp String(): have %v, want (100)", v)
+	}
+
+	// Append
+	m0, _ := reflectx.MethodByName(typ, "Append")
+	r0 := m0.Func.Call([]reflect.Value{pv, reflect.ValueOf(200), reflect.ValueOf(300), reflect.ValueOf(400)})
+	if v := r0[0].Int(); v != 1000 {
+		t.Fatalf("typ reflectx.MethodByName Testv: have %v, want 1000", v)
+	}
+	r0 = pv.MethodByName("Append").Call([]reflect.Value{reflect.ValueOf(200), reflect.ValueOf(300), reflect.ValueOf(400)})
+	if v := r0[0].Int(); v != 1000 {
+		t.Fatalf("typ value.MethodByName Testv: have %v, want 1000", v)
+	}
+}
+
+func TestMethodOf(t *testing.T) {
 	fs := []reflect.StructField{
 		reflect.StructField{Name: "X", Type: reflect.TypeOf(0)},
 		reflect.StructField{Name: "Y", Type: reflect.TypeOf(0)},
@@ -142,86 +213,4 @@ func TestDynamicPoint(t *testing.T) {
 	if v := r0[0].Int(); v != 1600 {
 		t.Fatalf("typ value.MethodByName Testv: have %v, want 1600", v)
 	}
-}
-
-func TestDynamicMethod(t *testing.T) {
-	fs := []reflect.StructField{
-		reflect.StructField{Name: "X", Type: reflect.TypeOf(0)},
-		reflect.StructField{Name: "Y", Type: reflect.TypeOf(0)},
-	}
-	styp := reflectx.NamedStructOf("main", "Point", fs)
-	mString := reflectx.MakeMethod(
-		"String",
-		false,
-		reflect.FuncOf(nil, []reflect.Type{strTyp}, false),
-		func(args []reflect.Value) (result []reflect.Value) {
-			v := args[0] //.Elem()
-			s := fmt.Sprintf("%v-%v", v.Field(0), v.Field(1))
-			result = append(result, reflect.ValueOf(s))
-			return
-		})
-	mSet := reflectx.MakeMethod(
-		"Set",
-		true,
-		reflect.FuncOf([]reflect.Type{intTyp, intTyp}, nil, false),
-		func(args []reflect.Value) (result []reflect.Value) {
-			v := args[0].Elem()
-			v.Field(0).Set(args[1])
-			v.Field(1).Set(args[2])
-			return
-		})
-	mGet := reflectx.MakeMethod(
-		"Get",
-		false,
-		reflect.FuncOf(nil, []reflect.Type{intTyp, intTyp}, false),
-		func(args []reflect.Value) (result []reflect.Value) {
-			v := args[0]
-			return []reflect.Value{v.Field(0), v.Field(1)}
-		})
-	mAppend := reflectx.MakeMethod(
-		"Append",
-		false,
-		reflect.FuncOf([]reflect.Type{reflect.SliceOf(intTyp)}, []reflect.Type{intTyp}, true),
-		func(args []reflect.Value) (result []reflect.Value) {
-			var sum int64
-			for i := 0; i < args[1].Len(); i++ {
-				sum += args[1].Index(i).Int()
-			}
-			return []reflect.Value{reflect.ValueOf(int(sum))}
-		})
-
-	typ := reflectx.MethodOf(styp, []reflectx.Method{
-		mString,
-		mSet,
-		mGet,
-		mAppend,
-	}, false)
-	ptrType := reflect.PtrTo(typ)
-	for i := 0; i < ptrType.NumMethod(); i++ {
-		log.Println("ptr", ptrType.Method(i))
-	}
-	for i := 0; i < typ.NumMethod(); i++ {
-		log.Println("struct", typ.Method(i))
-	}
-	pt := reflectx.New(typ).Elem()
-	pt.Field(0).SetInt(100)
-	pt.Field(1).SetInt(200)
-	r := pt.MethodByName("Get").Call(nil)
-	log.Println(r[0], r[1])
-	r = pt.Addr().MethodByName("Get").Call(nil)
-	log.Println(r[0], r[1])
-	m, _ := reflectx.MethodByName(typ, "Get")
-	r = m.Func.Call([]reflect.Value{pt})
-	log.Println(r)
-	m, _ = reflectx.MethodByName(ptrType, "Get")
-	r = m.Func.Call([]reflect.Value{pt.Addr()})
-	log.Println(r)
-	pt.Addr().MethodByName("Set").Call([]reflect.Value{reflect.ValueOf(300), reflect.ValueOf(400)})
-	log.Println(pt, pt.Addr())
-
-	r = pt.MethodByName("Append").Call([]reflect.Value{reflect.ValueOf(100), reflect.ValueOf(200), reflect.ValueOf(300)})
-	log.Println(r[0])
-
-	r = pt.Addr().MethodByName("Append").Call([]reflect.Value{reflect.ValueOf(100), reflect.ValueOf(200), reflect.ValueOf(300)})
-	log.Println(r[0])
 }
