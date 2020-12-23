@@ -152,11 +152,36 @@ func MethodOf(styp reflect.Type, methods []Method) reflect.Type {
 }
 
 func toRealType(typ, orgtyp, mtyp reflect.Type) (in, out []reflect.Type, ntyp, inTyp, outTyp reflect.Type) {
-	fn := func(t reflect.Type) reflect.Type {
+	var fnx func(t reflect.Type) (reflect.Type, bool)
+	fnx = func(t reflect.Type) (reflect.Type, bool) {
 		if t == orgtyp {
-			return typ
-		} else if t.Kind() == reflect.Ptr && t.Elem() == orgtyp {
-			return reflect.PtrTo(typ)
+			return typ, true
+		}
+		switch t.Kind() {
+		case reflect.Ptr:
+			if e, ok := fnx(t.Elem()); ok {
+				return reflect.PtrTo(e), true
+			}
+		case reflect.Slice:
+			if e, ok := fnx(t.Elem()); ok {
+				return reflect.SliceOf(e), true
+			}
+		case reflect.Array:
+			if e, ok := fnx(t.Elem()); ok {
+				return reflect.ArrayOf(t.Len(), e), true
+			}
+		case reflect.Map:
+			k, ok1 := fnx(t.Key())
+			v, ok2 := fnx(t.Elem())
+			if ok1 || ok2 {
+				return reflect.MapOf(k, v), true
+			}
+		}
+		return t, false
+	}
+	fn := func(t reflect.Type) reflect.Type {
+		if r, ok := fnx(t); ok {
+			return r
 		}
 		return t
 	}
@@ -204,6 +229,27 @@ func premakeMethodType(styp reflect.Type, mcount int, xcount int) (rt *rtype, tt
 			{Name: "M", Type: reflect.ArrayOf(mcount, reflect.TypeOf(method{}))},
 		}))
 		st := (*ptrType)(unsafe.Pointer(tt.Elem().Field(0).UnsafeAddr()))
+		rt = (*rtype)(unsafe.Pointer(st))
+	case reflect.Slice:
+		tt = reflect.New(reflect.StructOf([]reflect.StructField{
+			{Name: "S", Type: reflect.TypeOf(sliceType{})},
+			{Name: "U", Type: reflect.TypeOf(uncommonType{})},
+			{Name: "M", Type: reflect.ArrayOf(mcount, reflect.TypeOf(method{}))},
+		}))
+		st := (*sliceType)(unsafe.Pointer(tt.Elem().Field(0).UnsafeAddr()))
+		st.elem = totype(styp.Elem())
+		rt = (*rtype)(unsafe.Pointer(st))
+	case reflect.Array:
+		tt = reflect.New(reflect.StructOf([]reflect.StructField{
+			{Name: "S", Type: reflect.TypeOf(arrayType{})},
+			{Name: "U", Type: reflect.TypeOf(uncommonType{})},
+			{Name: "M", Type: reflect.ArrayOf(mcount, reflect.TypeOf(method{}))},
+		}))
+		st := (*arrayType)(unsafe.Pointer(tt.Elem().Field(0).UnsafeAddr()))
+		ost := (*arrayType)(unsafe.Pointer(ort))
+		st.elem = ost.elem
+		st.slice = ost.slice
+		st.len = ost.len
 		rt = (*rtype)(unsafe.Pointer(st))
 	default:
 		tt = reflect.New(reflect.StructOf([]reflect.StructField{
