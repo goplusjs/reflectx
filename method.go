@@ -349,7 +349,11 @@ func storeMethodValue(v reflect.Value) {
 	ptrTypeMap[ptr] = toElem(v.Type())
 }
 
-func icall_1(ptr unsafe.Pointer, p *unsafe.Pointer) {
+func icall_1(ptr unsafe.Pointer, p unsafe.Pointer) {
+	icall_12(0, ptr, unsafe.Pointer(&p))
+}
+
+func icall_12(i int, ptr unsafe.Pointer, p unsafe.Pointer) {
 	typ, ok := ptrTypeMap[ptr]
 	if !ok || typ == nil {
 		log.Println("cannot found ptr type", ptr)
@@ -362,12 +366,13 @@ func icall_1(ptr unsafe.Pointer, p *unsafe.Pointer) {
 	if !ok {
 		log.Println("cannot found type info", typ)
 	}
-	info := infos[0]
-	sz := info.inTyp.Size()
-	p1 := unsafe.Pointer(&p)
-	buf := make([]byte, sz, sz)
-	for i := 0; i < int(sz); i += 1 {
-		buf[i] = *(*byte)(add(p1, uintptr(i), ""))
+	info := infos[i]
+	isz := info.inTyp.Size()
+	//p1 := unsafe.Pointer(&p)
+	isz = 8
+	buf := make([]uintptr, isz/8, isz/8)
+	for i := uintptr(0); i < isz; i += 8 {
+		buf[i] = *(*uintptr)(add(p, i, ""))
 	}
 	method := MethodByIndex(typ, info.index)
 	var in []reflect.Value
@@ -409,14 +414,14 @@ func icall_1(ptr unsafe.Pointer, p *unsafe.Pointer) {
 	for i := 0; i < int(osz); i += 1 {
 		data[i] = *(*byte)(add(po, uintptr(i), ""))
 	}
-	log.Println("---> call", r, data, osz)
-	p2 := add(p1, uintptr(16), "")
-	*(*string)(p2) = "world"
-	for i := 0; i < int(osz); i += 1 {
-		*(*byte)(add(p2, uintptr(i), "")) = data[i]
-	}
+	off := isz
+	a := uintptr(8)
+	off = (off + a - 1) &^ (a - 1)
 
-	//memmove(p2, unsafe.Pointer(out.UnsafeAddr()), osz)
+	log.Println("---> call", off, isz, r, data, osz)
+	for i := uintptr(0); i < osz; i++ {
+		*(*byte)(add(p, off+i, "")) = *(*byte)(add(po, uintptr(i), ""))
+	}
 }
 
 func icall_2(p unsafe.Pointer, a unsafe.Pointer) {
