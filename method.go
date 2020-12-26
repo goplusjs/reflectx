@@ -349,7 +349,7 @@ func storeMethodValue(v reflect.Value) {
 	ptrTypeMap[ptr] = toElem(v.Type())
 }
 
-func icall_1(ptr unsafe.Pointer, p unsafe.Pointer) {
+func icall_1(ptr unsafe.Pointer, p *unsafe.Pointer) {
 	typ, ok := ptrTypeMap[ptr]
 	if !ok || typ == nil {
 		log.Println("cannot found ptr type", ptr)
@@ -363,27 +363,60 @@ func icall_1(ptr unsafe.Pointer, p unsafe.Pointer) {
 		log.Println("cannot found type info", typ)
 	}
 	info := infos[0]
-	// for i := 0; i < info.inTyp.NumField(); i++ {
-	// 	//f := info.inTyp.Field(i)
-	// 	p0
-	// 	log.Println(reflect.NewAt(intTyp, add(p, 8, "")).Elem())
-	// }
+	sz := info.inTyp.Size()
 	p1 := unsafe.Pointer(&p)
-	log.Println((*M)(unsafe.Pointer(&p)).X)
-	log.Println((*M)(unsafe.Pointer(&p)).Y)
-	v := reflect.New(info.stackType).Elem()
-	//memmove(unsafe.Pointer(&data), p1, 32)
-	for i := 2; i >= 0; i-- {
-		f := info.stackType.Field(i)
-		t0 := reflect.NewAt(f.Type, add(p1, f.Offset, "")).Elem()
-		log.Println(*(*int)(add(p1, f.Offset, "")), f, t0)
+	buf := make([]byte, sz, sz)
+	for i := 0; i < int(sz); i += 1 {
+		buf[i] = *(*byte)(add(p1, uintptr(i), ""))
 	}
-	//log.Println(reflect.NewAt(info.stackType, p1))
-	// log.Println(info)
-	//p0 := add(unsafe.Pointer(&p), 16, "")
-	//t0 := reflect.NewAt(intTyp, unsafe.Pointer(p0)).Elem()
-	log.Println(v, unsafe.Sizeof(M{}))
-	//	icall_x(0, p, a, true)
+	method := MethodByIndex(typ, info.index)
+	var in []reflect.Value
+	var receiver reflect.Value
+	if false {
+		receiver = reflect.NewAt(typ.Elem(), ptr)
+		if !info.pointer {
+			receiver = receiver.Elem()
+		}
+	} else {
+		receiver = reflect.NewAt(typ, ptr).Elem()
+	}
+	in = append(in, receiver)
+	inCount := method.Type.NumIn()
+	if inCount > 1 {
+		inArgs := reflect.NewAt(info.inTyp, unsafe.Pointer(&buf[0])).Elem()
+		if info.variadic {
+			for i := 1; i < inCount-1; i++ {
+				in = append(in, inArgs.Field(i-1))
+			}
+			slice := inArgs.Field(inCount - 2)
+			for i := 0; i < slice.Len(); i++ {
+				in = append(in, slice.Index(i))
+			}
+		} else {
+			for i := 1; i < inCount; i++ {
+				in = append(in, inArgs.Field(i-1))
+			}
+		}
+	}
+	r := method.Func.Call(in)
+	out := reflect.New(info.outTyp).Elem()
+	for i, v := range r {
+		out.Field(i).Set(v)
+	}
+	osz := info.outTyp.Size()
+	data := make([]byte, osz, osz)
+	po := unsafe.Pointer(out.UnsafeAddr())
+	for i := 0; i < int(osz); i += 1 {
+		data[i] = *(*byte)(add(po, uintptr(i), ""))
+	}
+	log.Println("---> call", r, data, osz)
+	p2 := add(p1, uintptr(16), "")
+	*(*string)(p2) = "world"
+	for i := 0; i < int(osz); i += 1 {
+		*(*byte)(add(p2, uintptr(i), "")) = data[i]
+	}
+
+	//memmove(p2, unsafe.Pointer(out.UnsafeAddr()), osz)
 }
 
 func icall_2(p unsafe.Pointer, a unsafe.Pointer) {
