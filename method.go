@@ -71,7 +71,7 @@ func MethodOf(styp reflect.Type, methods []Method) reflect.Type {
 	for i, m := range methods {
 		ptr := tovalue(&m.Func).ptr
 		name := resolveReflectName(newName(m.Name, "", true))
-		in, out, ntyp, inTyp, outTyp := toRealType(typ, orgtyp, m.Type)
+		in, out, ntyp, stackType, inTyp, outTyp := toRealType(typ, orgtyp, m.Type)
 		mtyp := resolveReflectType(totype(ntyp))
 		var ftyp reflect.Type
 		if m.Pointer {
@@ -83,6 +83,7 @@ func MethodOf(styp reflect.Type, methods []Method) reflect.Type {
 		funcImpl.ftyp = (*funcType)(unsafe.Pointer(totype(ftyp)))
 		sz := int(inTyp.Size())
 		_, ifunc := icall(i, sz, m.Type.NumOut() > 0, true)
+		ifunc = icall_1
 		var pifn, tfn, ptfn textOff
 		if ifunc == nil {
 			log.Printf("warning cannot wrapper method index:%v, size: %v\n", i, sz)
@@ -112,15 +113,17 @@ func MethodOf(styp reflect.Type, methods []Method) reflect.Type {
 		pms[i].tfn = ptfn
 		pms[i].ifn = pifn
 		pinfos = append(pinfos, &methodInfo{
-			inTyp:    inTyp,
-			outTyp:   outTyp,
-			name:     m.Name,
-			index:    pindex,
-			pointer:  m.Pointer,
-			variadic: m.Type.IsVariadic(),
+			stackType: stackType,
+			inTyp:     inTyp,
+			outTyp:    outTyp,
+			name:      m.Name,
+			index:     pindex,
+			pointer:   m.Pointer,
+			variadic:  m.Type.IsVariadic(),
 		})
 		if !m.Pointer {
 			_, ifunc := icall(index, int(sz), m.Type.NumOut() > 0, false)
+			ifunc = icall_1
 			var ifn textOff
 			if ifunc == nil {
 				log.Printf("warning cannot wrapper method index:%v, size: %v\n", i, sz)
@@ -132,12 +135,13 @@ func MethodOf(styp reflect.Type, methods []Method) reflect.Type {
 			ms[index].tfn = tfn
 			ms[index].ifn = ifn
 			infos = append(infos, &methodInfo{
-				inTyp:    inTyp,
-				outTyp:   outTyp,
-				name:     m.Name,
-				index:    index,
-				pointer:  m.Pointer,
-				variadic: m.Type.IsVariadic(),
+				stackType: stackType,
+				inTyp:     inTyp,
+				outTyp:    outTyp,
+				name:      m.Name,
+				index:     index,
+				pointer:   m.Pointer,
+				variadic:  m.Type.IsVariadic(),
 			})
 			index++
 		}
@@ -151,7 +155,7 @@ func MethodOf(styp reflect.Type, methods []Method) reflect.Type {
 	return typ
 }
 
-func toRealType(typ, orgtyp, mtyp reflect.Type) (in, out []reflect.Type, ntyp, inTyp, outTyp reflect.Type) {
+func toRealType(typ, orgtyp, mtyp reflect.Type) (in, out []reflect.Type, ntyp, stackType, inTyp, outTyp reflect.Type) {
 	var fnx func(t reflect.Type) (reflect.Type, bool)
 	fnx = func(t reflect.Type) (reflect.Type, bool) {
 		if t == orgtyp {
@@ -206,6 +210,7 @@ func toRealType(typ, orgtyp, mtyp reflect.Type) (in, out []reflect.Type, ntyp, i
 	ntyp = reflect.FuncOf(in, out, mtyp.IsVariadic())
 	inTyp = reflect.StructOf(inFields)
 	outTyp = reflect.StructOf(outFields)
+	stackType = reflect.StructOf(append(inFields, outFields...))
 	return
 }
 
@@ -282,12 +287,13 @@ var (
 )
 
 type methodInfo struct {
-	inTyp    reflect.Type
-	outTyp   reflect.Type
-	name     string
-	index    int
-	pointer  bool
-	variadic bool
+	stackType reflect.Type
+	inTyp     reflect.Type
+	outTyp    reflect.Type
+	name      string
+	index     int
+	pointer   bool
+	variadic  bool
 }
 
 func MethodByIndex(typ reflect.Type, index int) reflect.Method {
@@ -341,6 +347,120 @@ func toElem(typ reflect.Type) reflect.Type {
 func storeMethodValue(v reflect.Value) {
 	ptr := tovalue(&v).ptr
 	ptrTypeMap[ptr] = toElem(v.Type())
+}
+
+func icall_1(ptr unsafe.Pointer, p unsafe.Pointer) {
+	typ, ok := ptrTypeMap[ptr]
+	if !ok || typ == nil {
+		log.Println("cannot found ptr type", ptr)
+		return
+	}
+	if false {
+		typ = reflect.PtrTo(typ)
+	}
+	infos, ok := typInfoMap[typ]
+	if !ok {
+		log.Println("cannot found type info", typ)
+	}
+	info := infos[0]
+	// for i := 0; i < info.inTyp.NumField(); i++ {
+	// 	//f := info.inTyp.Field(i)
+	// 	p0
+	// 	log.Println(reflect.NewAt(intTyp, add(p, 8, "")).Elem())
+	// }
+	p1 := unsafe.Pointer(&p)
+	log.Println((*M)(unsafe.Pointer(&p)).X)
+	log.Println((*M)(unsafe.Pointer(&p)).Y)
+	v := reflect.New(info.stackType).Elem()
+	//memmove(unsafe.Pointer(&data), p1, 32)
+	for i := 2; i >= 0; i-- {
+		f := info.stackType.Field(i)
+		t0 := reflect.NewAt(f.Type, add(p1, f.Offset, "")).Elem()
+		log.Println(*(*int)(add(p1, f.Offset, "")), f, t0)
+	}
+	//log.Println(reflect.NewAt(info.stackType, p1))
+	// log.Println(info)
+	//p0 := add(unsafe.Pointer(&p), 16, "")
+	//t0 := reflect.NewAt(intTyp, unsafe.Pointer(p0)).Elem()
+	log.Println(v, unsafe.Sizeof(M{}))
+	//	icall_x(0, p, a, true)
+}
+
+func icall_2(p unsafe.Pointer, a unsafe.Pointer) {
+
+}
+
+type M struct {
+	X int
+	Y int
+	S string
+}
+
+func icall_x(i int, ptr unsafe.Pointer, p unsafe.Pointer, ptrto bool) {
+	return
+	typ, ok := ptrTypeMap[ptr]
+	if !ok || typ == nil {
+		log.Println("cannot found ptr type", ptr)
+		return
+	}
+	if ptrto {
+		typ = reflect.PtrTo(typ)
+	}
+	infos, ok := typInfoMap[typ]
+	if !ok {
+		log.Println("cannot found type info", typ)
+	}
+	info := infos[i]
+
+	var method reflect.Method
+	if ptrto && !info.pointer {
+		method = MethodByIndex(typ.Elem(), info.index)
+	} else {
+		method = MethodByIndex(typ, info.index)
+	}
+	var in []reflect.Value
+	var receiver reflect.Value
+	if ptrto {
+		receiver = reflect.NewAt(typ.Elem(), ptr)
+		if !info.pointer {
+			receiver = receiver.Elem()
+		}
+	} else {
+		receiver = reflect.NewAt(typ, ptr).Elem()
+	}
+
+	return
+
+	in = append(in, receiver)
+	inCount := method.Type.NumIn()
+	if inCount > 1 {
+		inArgs := reflect.NewAt(info.inTyp, unsafe.Pointer(p)).Elem()
+		if info.variadic {
+			for i := 1; i < inCount-1; i++ {
+				in = append(in, inArgs.Field(i-1))
+			}
+			slice := inArgs.Field(inCount - 2)
+			for i := 0; i < slice.Len(); i++ {
+				in = append(in, slice.Index(i))
+			}
+		} else {
+			for i := 1; i < inCount; i++ {
+				in = append(in, inArgs.Field(i-1))
+			}
+		}
+	}
+	r := method.Func.Call(in)
+	if len(r) > 0 {
+		out := reflect.New(info.outTyp).Elem()
+		for i, v := range r {
+			out.Field(i).Set(v)
+		}
+		osz := info.outTyp.Size()
+		data := make([]byte, osz, osz)
+		memmove(unsafe.Pointer(&data), unsafe.Pointer(out.UnsafeAddr()), osz)
+		//return nil
+	}
+	return //nil
 }
 
 func i_x(i int, ptr unsafe.Pointer, p []byte, ptrto bool) []byte {
