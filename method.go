@@ -350,28 +350,31 @@ func storeMethodValue(v reflect.Value) {
 }
 
 func icall_1(ptr unsafe.Pointer, p unsafe.Pointer) {
-	icall_12(0, ptr, unsafe.Pointer(&p))
+	icall_x(0, ptr, unsafe.Pointer(&p), false)
 }
 
-func icall_12(i int, ptr unsafe.Pointer, p unsafe.Pointer) {
+const (
+	uintptrAligin = unsafe.Sizeof(uintptr(0))
+)
+
+func icall_x(i int, ptr unsafe.Pointer, p unsafe.Pointer, ptrto bool) bool {
 	typ, ok := ptrTypeMap[ptr]
-	if !ok || typ == nil {
+	if !ok {
 		log.Println("cannot found ptr type", ptr)
-		return
+		return false
 	}
-	if false {
+	if ptrto {
 		typ = reflect.PtrTo(typ)
 	}
 	infos, ok := typInfoMap[typ]
 	if !ok {
 		log.Println("cannot found type info", typ)
+		return false
 	}
 	info := infos[i]
-	isz := info.inTyp.Size()
-	//p1 := unsafe.Pointer(&p)
-	isz = 8
-	buf := make([]uintptr, isz/8, isz/8)
-	for i := uintptr(0); i < isz; i += 8 {
+	isz := unsafe.Alignof(info.inTyp.Size())
+	buf := make([]uintptr, isz/uintptrAligin, isz/uintptrAligin)
+	for i := uintptr(0); i < isz; i += uintptrAligin {
 		buf[i] = *(*uintptr)(add(p, i, ""))
 	}
 	method := MethodByIndex(typ, info.index)
@@ -414,91 +417,10 @@ func icall_12(i int, ptr unsafe.Pointer, p unsafe.Pointer) {
 	for i := 0; i < int(osz); i += 1 {
 		data[i] = *(*byte)(add(po, uintptr(i), ""))
 	}
-	off := isz
-	a := uintptr(8)
-	off = (off + a - 1) &^ (a - 1)
-
-	log.Println("---> call", off, isz, r, data, osz)
 	for i := uintptr(0); i < osz; i++ {
-		*(*byte)(add(p, off+i, "")) = *(*byte)(add(po, uintptr(i), ""))
+		*(*byte)(add(p, isz+i, "")) = *(*byte)(add(po, uintptr(i), ""))
 	}
-}
-
-func icall_2(p unsafe.Pointer, a unsafe.Pointer) {
-
-}
-
-type M struct {
-	X int
-	Y int
-	S string
-}
-
-func icall_x(i int, ptr unsafe.Pointer, p unsafe.Pointer, ptrto bool) {
-	return
-	typ, ok := ptrTypeMap[ptr]
-	if !ok || typ == nil {
-		log.Println("cannot found ptr type", ptr)
-		return
-	}
-	if ptrto {
-		typ = reflect.PtrTo(typ)
-	}
-	infos, ok := typInfoMap[typ]
-	if !ok {
-		log.Println("cannot found type info", typ)
-	}
-	info := infos[i]
-
-	var method reflect.Method
-	if ptrto && !info.pointer {
-		method = MethodByIndex(typ.Elem(), info.index)
-	} else {
-		method = MethodByIndex(typ, info.index)
-	}
-	var in []reflect.Value
-	var receiver reflect.Value
-	if ptrto {
-		receiver = reflect.NewAt(typ.Elem(), ptr)
-		if !info.pointer {
-			receiver = receiver.Elem()
-		}
-	} else {
-		receiver = reflect.NewAt(typ, ptr).Elem()
-	}
-
-	return
-
-	in = append(in, receiver)
-	inCount := method.Type.NumIn()
-	if inCount > 1 {
-		inArgs := reflect.NewAt(info.inTyp, unsafe.Pointer(p)).Elem()
-		if info.variadic {
-			for i := 1; i < inCount-1; i++ {
-				in = append(in, inArgs.Field(i-1))
-			}
-			slice := inArgs.Field(inCount - 2)
-			for i := 0; i < slice.Len(); i++ {
-				in = append(in, slice.Index(i))
-			}
-		} else {
-			for i := 1; i < inCount; i++ {
-				in = append(in, inArgs.Field(i-1))
-			}
-		}
-	}
-	r := method.Func.Call(in)
-	if len(r) > 0 {
-		out := reflect.New(info.outTyp).Elem()
-		for i, v := range r {
-			out.Field(i).Set(v)
-		}
-		osz := info.outTyp.Size()
-		data := make([]byte, osz, osz)
-		memmove(unsafe.Pointer(&data), unsafe.Pointer(out.UnsafeAddr()), osz)
-		//return nil
-	}
-	return //nil
+	return true
 }
 
 func i_x(i int, ptr unsafe.Pointer, p []byte, ptrto bool) []byte {
