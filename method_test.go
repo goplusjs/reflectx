@@ -562,6 +562,16 @@ var (
 			false,
 		},
 		testMethodStack{
+			"Empty Struct2",
+			reflect.FuncOf([]reflect.Type{emptyStructTyp, intTyp, emptyStructTyp}, []reflect.Type{emptyStructTyp, intTyp, emptyStructTyp}, false),
+			func(args []reflect.Value) []reflect.Value {
+				return []reflect.Value{args[1], args[2], args[3]}
+			},
+			[]reflect.Value{reflect.ValueOf(emtpyStruct), reflect.ValueOf(100), reflect.ValueOf(emtpyStruct)},
+			[]reflect.Value{reflect.ValueOf(emtpyStruct), reflect.ValueOf(100), reflect.ValueOf(emtpyStruct)},
+			false,
+		},
+		testMethodStack{
 			"Bool_Nil",
 			reflect.FuncOf([]reflect.Type{boolTyp}, nil, false),
 			func(args []reflect.Value) []reflect.Value {

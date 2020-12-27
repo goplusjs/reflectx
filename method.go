@@ -384,8 +384,7 @@ func i_x(i int, ptr unsafe.Pointer, p unsafe.Pointer, ptrto bool) bool {
 	in := []reflect.Value{receiver}
 	var off uintptr
 	if inCount := method.Type.NumIn(); inCount > 1 {
-		sz := info.inTyp.Size()
-		isz := (sz + uintptrAligin - 1) &^ (uintptrAligin - 1)
+		isz := (info.inTyp.Size() + uintptrAligin - 1) &^ (uintptrAligin - 1)
 		if isz == 0 {
 			isz = uintptrAligin
 		} else {
