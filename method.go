@@ -372,13 +372,7 @@ func icall_x(i int, ptr unsafe.Pointer, p unsafe.Pointer, ptrto bool) bool {
 		return false
 	}
 	info := infos[i]
-	isz := unsafe.Alignof(info.inTyp.Size())
-	buf := make([]uintptr, isz/uintptrAligin, isz/uintptrAligin)
-	for i := uintptr(0); i < isz; i += uintptrAligin {
-		buf[i] = *(*uintptr)(add(p, i, ""))
-	}
 	method := MethodByIndex(typ, info.index)
-	var in []reflect.Value
 	var receiver reflect.Value
 	if false {
 		receiver = reflect.NewAt(typ.Elem(), ptr)
@@ -388,37 +382,45 @@ func icall_x(i int, ptr unsafe.Pointer, p unsafe.Pointer, ptrto bool) bool {
 	} else {
 		receiver = reflect.NewAt(typ, ptr).Elem()
 	}
-	in = append(in, receiver)
-	inCount := method.Type.NumIn()
-	if inCount > 1 {
+	in := []reflect.Value{receiver}
+	var off uintptr
+	if inCount := info.inTyp.NumField(); inCount > 0 {
+		sz := info.inTyp.Size()
+		isz := unsafe.Alignof(sz)
+		if sz != 0 {
+			off = isz
+		}
+		buf := make([]uintptr, isz/uintptrAligin, isz/uintptrAligin)
+		for i := uintptr(0); i < isz; i += uintptrAligin {
+			buf[i] = *(*uintptr)(add(p, i, ""))
+		}
 		inArgs := reflect.NewAt(info.inTyp, unsafe.Pointer(&buf[0])).Elem()
 		if info.variadic {
-			for i := 1; i < inCount-1; i++ {
-				in = append(in, inArgs.Field(i-1))
+			for i := 0; i < inCount; i++ {
+				in = append(in, inArgs.Field(i))
 			}
-			slice := inArgs.Field(inCount - 2)
+			slice := inArgs.Field(inCount - 1)
 			for i := 0; i < slice.Len(); i++ {
 				in = append(in, slice.Index(i))
 			}
 		} else {
-			for i := 1; i < inCount; i++ {
-				in = append(in, inArgs.Field(i-1))
+			for i := 0; i < inCount; i++ {
+				in = append(in, inArgs.Field(i))
 			}
 		}
 	}
 	r := method.Func.Call(in)
-	out := reflect.New(info.outTyp).Elem()
-	for i, v := range r {
-		out.Field(i).Set(v)
-	}
-	osz := info.outTyp.Size()
-	data := make([]byte, osz, osz)
-	po := unsafe.Pointer(out.UnsafeAddr())
-	for i := 0; i < int(osz); i += 1 {
-		data[i] = *(*byte)(add(po, uintptr(i), ""))
-	}
-	for i := uintptr(0); i < osz; i++ {
-		*(*byte)(add(p, isz+i, "")) = *(*byte)(add(po, uintptr(i), ""))
+
+	if info.outTyp.NumField() > 0 {
+		out := reflect.New(info.outTyp).Elem()
+		for i, v := range r {
+			out.Field(i).Set(v)
+		}
+		osz := info.outTyp.Size()
+		po := unsafe.Pointer(out.UnsafeAddr())
+		for i := uintptr(0); i < osz; i++ {
+			*(*byte)(add(p, off+i, "")) = *(*byte)(add(po, uintptr(i), ""))
+		}
 	}
 	return true
 }
