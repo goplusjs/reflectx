@@ -388,8 +388,7 @@ func i_x(i int, ptr unsafe.Pointer, p unsafe.Pointer, ptrto bool) bool {
 		isz := (sz + uintptrAligin - 1) &^ (uintptrAligin - 1)
 		if isz == 0 {
 			isz = uintptrAligin
-		}
-		if sz != 0 {
+		} else {
 			off = isz
 		}
 		buf := make([]byte, isz, isz)
