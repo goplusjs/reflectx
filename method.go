@@ -386,6 +386,9 @@ func i_x(i int, ptr unsafe.Pointer, p unsafe.Pointer, ptrto bool) bool {
 	if inCount := method.Type.NumIn(); inCount > 1 {
 		sz := info.inTyp.Size()
 		isz := (sz + uintptrAligin - 1) &^ (uintptrAligin - 1)
+		if isz == 0 {
+			isz = uintptrAligin
+		}
 		if sz != 0 {
 			off = isz
 		}
