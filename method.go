@@ -68,7 +68,7 @@ func MethodOf(styp reflect.Type, methods []Method) reflect.Type {
 	for i, m := range methods {
 		ptr := tovalue(&m.Func).ptr
 		name := resolveReflectName(newName(m.Name, "", true))
-		in, out, ntyp, stackType, inTyp, outTyp := toRealType(typ, orgtyp, m.Type)
+		in, out, ntyp, inTyp, outTyp := toRealType(typ, orgtyp, m.Type)
 		mtyp := resolveReflectType(totype(ntyp))
 		var ftyp reflect.Type
 		if m.Pointer {
@@ -109,13 +109,12 @@ func MethodOf(styp reflect.Type, methods []Method) reflect.Type {
 		pms[i].tfn = ptfn
 		pms[i].ifn = pifn
 		pinfos = append(pinfos, &methodInfo{
-			stackType: stackType,
-			inTyp:     inTyp,
-			outTyp:    outTyp,
-			name:      m.Name,
-			index:     pindex,
-			pointer:   m.Pointer,
-			variadic:  m.Type.IsVariadic(),
+			inTyp:    inTyp,
+			outTyp:   outTyp,
+			name:     m.Name,
+			index:    pindex,
+			pointer:  m.Pointer,
+			variadic: m.Type.IsVariadic(),
 		})
 		if !m.Pointer {
 			ifunc := icall(index, false)
@@ -130,13 +129,12 @@ func MethodOf(styp reflect.Type, methods []Method) reflect.Type {
 			ms[index].tfn = tfn
 			ms[index].ifn = ifn
 			infos = append(infos, &methodInfo{
-				stackType: stackType,
-				inTyp:     inTyp,
-				outTyp:    outTyp,
-				name:      m.Name,
-				index:     index,
-				pointer:   m.Pointer,
-				variadic:  m.Type.IsVariadic(),
+				inTyp:    inTyp,
+				outTyp:   outTyp,
+				name:     m.Name,
+				index:    index,
+				pointer:  m.Pointer,
+				variadic: m.Type.IsVariadic(),
 			})
 			index++
 		}
@@ -150,7 +148,7 @@ func MethodOf(styp reflect.Type, methods []Method) reflect.Type {
 	return typ
 }
 
-func toRealType(typ, orgtyp, mtyp reflect.Type) (in, out []reflect.Type, ntyp, stackType, inTyp, outTyp reflect.Type) {
+func toRealType(typ, orgtyp, mtyp reflect.Type) (in, out []reflect.Type, ntyp, inTyp, outTyp reflect.Type) {
 	var fnx func(t reflect.Type) (reflect.Type, bool)
 	fnx = func(t reflect.Type) (reflect.Type, bool) {
 		if t == orgtyp {
@@ -205,7 +203,6 @@ func toRealType(typ, orgtyp, mtyp reflect.Type) (in, out []reflect.Type, ntyp, s
 	ntyp = reflect.FuncOf(in, out, mtyp.IsVariadic())
 	inTyp = reflect.StructOf(inFields)
 	outTyp = reflect.StructOf(outFields)
-	stackType = reflect.StructOf(append(inFields, outFields...))
 	return
 }
 
@@ -282,13 +279,12 @@ var (
 )
 
 type methodInfo struct {
-	stackType reflect.Type
-	inTyp     reflect.Type
-	outTyp    reflect.Type
-	name      string
-	index     int
-	pointer   bool
-	variadic  bool
+	inTyp    reflect.Type
+	outTyp   reflect.Type
+	name     string
+	index    int
+	pointer  bool
+	variadic bool
 }
 
 func MethodByIndex(typ reflect.Type, index int) reflect.Method {
