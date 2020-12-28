@@ -572,6 +572,26 @@ var (
 			false,
 		},
 		testMethodStack{
+			"Empty Struct3",
+			reflect.FuncOf([]reflect.Type{emptyStructTyp, emptyStructTyp, intTyp, emptyStructTyp}, []reflect.Type{intTyp}, false),
+			func(args []reflect.Value) []reflect.Value {
+				return []reflect.Value{args[3]}
+			},
+			[]reflect.Value{reflect.ValueOf(emtpyStruct), reflect.ValueOf(emtpyStruct), reflect.ValueOf(100), reflect.ValueOf(emtpyStruct)},
+			[]reflect.Value{reflect.ValueOf(100)},
+			false,
+		},
+		testMethodStack{
+			"Empty Struct4",
+			reflect.FuncOf([]reflect.Type{emptyStructTyp, emptyStructTyp, intTyp, emptyStructTyp}, []reflect.Type{emptyStructTyp, emptyStructTyp, emptyStructTyp, boolTyp}, false),
+			func(args []reflect.Value) []reflect.Value {
+				return []reflect.Value{reflect.ValueOf(emtpyStruct), reflect.ValueOf(emtpyStruct), reflect.ValueOf(emtpyStruct), reflect.ValueOf(true)}
+			},
+			[]reflect.Value{reflect.ValueOf(emtpyStruct), reflect.ValueOf(emtpyStruct), reflect.ValueOf(100), reflect.ValueOf(emtpyStruct)},
+			[]reflect.Value{reflect.ValueOf(emtpyStruct), reflect.ValueOf(emtpyStruct), reflect.ValueOf(emtpyStruct), reflect.ValueOf(true)},
+			false,
+		},
+		testMethodStack{
 			"Bool_Nil",
 			reflect.FuncOf([]reflect.Type{boolTyp}, nil, false),
 			func(args []reflect.Value) []reflect.Value {
