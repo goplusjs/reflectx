@@ -106,7 +106,7 @@ func NamedTypeOf(pkgpath string, name string, from reflect.Type) reflect.Type {
 	typ := toType(rt)
 	kind := TkType
 	if typ.Kind() == reflect.Struct {
-		typ = MethodOf(typ, nil)
+		//	typ = MethodOf(typ, nil)
 		kind |= TkMethod
 	}
 	ntypeMap[typ] = &Named{Name: name, PkgPath: pkgpath, Type: typ, From: from, Kind: kind}

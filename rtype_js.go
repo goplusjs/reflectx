@@ -3,7 +3,6 @@
 package reflectx
 
 import (
-	"log"
 	"reflect"
 	"unsafe"
 
@@ -11,10 +10,16 @@ import (
 )
 
 //go:linkname reflectType reflect.reflectType
-func reflectType(typ *js.Object) reflect.Type
+func reflectType(typ *js.Object) *rtype
 
 //go:linkname setKindType reflect.setKindType
 func setKindType(rt *rtype, kindType interface{})
+
+//go:linkname newNameOff reflect.newNameOff
+func newNameOff(n name) nameOff
+
+//go:linkname newTypeOff reflect.newTypeOff
+func newTypeOff(rt *rtype) typeOff
 
 // func jsType(typ Type) *js.Object {
 // 	return js.InternalObject(typ).Get("jsType")
@@ -456,121 +461,130 @@ func internalStr(strObj *js.Object) string {
 // 	}
 // }
 
-func init() {
-	t := reflect.TypeOf([10]string{})
-	newType(t, 0, 0)
+type funcType struct {
+	rtype    `reflect:"func"`
+	inCount  uint16
+	outCount uint16
+
+	_in  []*rtype
+	_out []*rtype
 }
 
-func newType(styp reflect.Type, mcount int, xcount int) (rt *rtype, tt reflect.Value) {
-	//var i interface{} = styp //[10]string{}
-	typ := js.InternalObject(styp).Get("jsType") //.Get("constructor")
-	log.Println(styp, mcount, xcount, typ.Get("kind"))
-	return
-	// rt := &rtype{
-	// 	size: uintptr(typ.Get("size").Int()),
-	// 	kind: uint8(typ.Get("kind").Int()),
-	// 	str:  newNameOff(newName(fnObjStr(typ.Get("string")), "", typ.Get("exported").Bool())),
-	// }
-	// typ := toType(rt)
-	// js.InternalObject(rt).Set("jsType", typ)
-	// typ.Set("reflectType", js.InternalObject(rt))
+func (t *funcType) in() []*rtype {
+	return t._in
+}
 
-	// ut := &uncommonType{
-	// 	mcount: mcount,
-	// 	xcount: xcount,
-	// }
-	// js.InternalObject(ut).Set("jsType", typ)
-	// js.InternalObject(rt).Set("uncommonType", js.InternalObject(ut))
+func (t *funcType) out() []*rtype {
+	return t._out
+}
 
-	// switch rt.Kind() {
-	// case Array:
-	// 	setKindType(rt, &arrayType{
-	// 		elem: reflectType(typ.Get("elem")),
-	// 		len:  uintptr(typ.Get("len").Int()),
-	// 	})
-	// case Chan:
-	// 	dir := BothDir
-	// 	if typ.Get("sendOnly").Bool() {
-	// 		dir = SendDir
-	// 	}
-	// 	if typ.Get("recvOnly").Bool() {
-	// 		dir = RecvDir
-	// 	}
-	// 	setKindType(rt, &chanType{
-	// 		elem: reflectType(typ.Get("elem")),
-	// 		dir:  uintptr(dir),
-	// 	})
-	// case Func:
-	// 	params := typ.Get("params")
-	// 	in := make([]*rtype, params.Length())
-	// 	for i := range in {
-	// 		in[i] = reflectType(params.Index(i))
-	// 	}
-	// 	results := typ.Get("results")
-	// 	out := make([]*rtype, results.Length())
-	// 	for i := range out {
-	// 		out[i] = reflectType(results.Index(i))
-	// 	}
-	// 	outCount := uint16(results.Length())
-	// 	if typ.Get("variadic").Bool() {
-	// 		outCount |= 1 << 15
-	// 	}
-	// 	setKindType(rt, &funcType{
-	// 		rtype:    *rt,
-	// 		inCount:  uint16(params.Length()),
-	// 		outCount: outCount,
-	// 		_in:      in,
-	// 		_out:     out,
-	// 	})
-	// case Interface:
-	// 	methods := typ.Get("methods")
-	// 	imethods := make([]imethod, methods.Length())
-	// 	for i := range imethods {
-	// 		m := methods.Index(i)
-	// 		imethods[i] = imethod{
-	// 			name: newNameOff(newName(fnObjStr(m.Get("name")), "", fnObjStr(m.Get("pkg")) == "")),
-	// 			typ:  newTypeOff(reflectType(m.Get("typ"))),
-	// 		}
-	// 	}
-	// 	setKindType(rt, &interfaceType{
-	// 		rtype:   *rt,
-	// 		pkgPath: newName(fnObjStr(typ.Get("pkg")), "", false),
-	// 		methods: imethods,
-	// 	})
-	// case Map:
-	// 	setKindType(rt, &mapType{
-	// 		key:  reflectType(typ.Get("key")),
-	// 		elem: reflectType(typ.Get("elem")),
-	// 	})
-	// case Ptr:
-	// 	setKindType(rt, &ptrType{
-	// 		elem: reflectType(typ.Get("elem")),
-	// 	})
-	// case Slice:
-	// 	setKindType(rt, &sliceType{
-	// 		elem: reflectType(typ.Get("elem")),
-	// 	})
-	// case Struct:
-	// 	fields := typ.Get("fields")
-	// 	reflectFields := make([]structField, fields.Length())
-	// 	for i := range reflectFields {
-	// 		f := fields.Index(i)
-	// 		offsetEmbed := uintptr(i) << 1
-	// 		if f.Get("embedded").Bool() {
-	// 			offsetEmbed |= 1
-	// 		}
-	// 		reflectFields[i] = structField{
-	// 			name:        newName(fnObjStr(f.Get("name")), fnObjStr(f.Get("tag")), f.Get("exported").Bool()),
-	// 			typ:         reflectType(f.Get("typ")),
-	// 			offsetEmbed: offsetEmbed,
-	// 		}
-	// 	}
-	// 	setKindType(rt, &structType{
-	// 		rtype:   *rt,
-	// 		pkgPath: newName(fnObjStr(typ.Get("pkgPath")), "", false),
-	// 		fields:  reflectFields,
-	// 	})
-	// }
+func newType(styp reflect.Type, mcount int, xcount int) (*rtype, reflect.Value) {
+	typ := js.InternalObject(styp).Get("jsType")
+	fnObjStr := internalStr
+	rt := &rtype{
+		size: uintptr(typ.Get("size").Int()),
+		kind: uint8(typ.Get("kind").Int()),
+	}
+	ntyp := js.InternalObject(toType(rt))
+	js.InternalObject(rt).Set("jsType", ntyp)
+	ntyp.Set("reflectType", js.InternalObject(rt))
 
-	// return (*rtype)(unsafe.Pointer(typ.Get("reflectType").Unsafe()))
+	ut := &uncommonType{
+		mcount: uint16(mcount),
+		xcount: uint16(xcount),
+	}
+	js.InternalObject(ut).Set("jsType", ntyp)
+	js.InternalObject(rt).Set("uncommonType", js.InternalObject(ut))
+
+	switch rt.Kind() {
+	case reflect.Array:
+		setKindType(rt, &arrayType{
+			elem: reflectType(typ.Get("elem")),
+			len:  uintptr(typ.Get("len").Int()),
+		})
+	case reflect.Chan:
+		dir := reflect.BothDir
+		if typ.Get("sendOnly").Bool() {
+			dir = reflect.SendDir
+		}
+		if typ.Get("recvOnly").Bool() {
+			dir = reflect.RecvDir
+		}
+		setKindType(rt, &chanType{
+			elem: reflectType(typ.Get("elem")),
+			dir:  uintptr(dir),
+		})
+	case reflect.Func:
+		params := typ.Get("params")
+		in := make([]*rtype, params.Length())
+		for i := range in {
+			in[i] = reflectType(params.Index(i))
+		}
+		results := typ.Get("results")
+		out := make([]*rtype, results.Length())
+		for i := range out {
+			out[i] = reflectType(results.Index(i))
+		}
+		outCount := uint16(results.Length())
+		if typ.Get("variadic").Bool() {
+			outCount |= 1 << 15
+		}
+		setKindType(rt, &funcType{
+			rtype:    *rt,
+			inCount:  uint16(params.Length()),
+			outCount: outCount,
+			_in:      in,
+			_out:     out,
+		})
+	case reflect.Interface:
+		methods := typ.Get("methods")
+		imethods := make([]imethod, methods.Length())
+		for i := range imethods {
+			m := methods.Index(i)
+			imethods[i] = imethod{
+				name: newNameOff(newName(fnObjStr(m.Get("name")), "", fnObjStr(m.Get("pkg")) == "")),
+				typ:  newTypeOff(reflectType(m.Get("typ"))),
+			}
+		}
+		setKindType(rt, &interfaceType{
+			rtype:   *rt,
+			pkgPath: newName(fnObjStr(typ.Get("pkg")), "", false),
+			methods: imethods,
+		})
+	case reflect.Map:
+		setKindType(rt, &mapType{
+			key:  reflectType(typ.Get("key")),
+			elem: reflectType(typ.Get("elem")),
+		})
+	case reflect.Ptr:
+		setKindType(rt, &ptrType{
+			elem: reflectType(typ.Get("elem")),
+		})
+	case reflect.Slice:
+		setKindType(rt, &sliceType{
+			elem: reflectType(typ.Get("elem")),
+		})
+	case reflect.Struct:
+		fields := typ.Get("fields")
+		reflectFields := make([]structField, fields.Length())
+		for i := range reflectFields {
+			f := fields.Index(i)
+			offsetEmbed := uintptr(i) << 1
+			if f.Get("embedded").Bool() {
+				offsetEmbed |= 1
+			}
+			reflectFields[i] = structField{
+				name:        newName(fnObjStr(f.Get("name")), fnObjStr(f.Get("tag")), f.Get("exported").Bool()),
+				typ:         reflectType(f.Get("typ")),
+				offsetEmbed: offsetEmbed,
+			}
+		}
+		setKindType(rt, &structType{
+			rtype:   *rt,
+			pkgPath: newName(fnObjStr(typ.Get("pkgPath")), "", false),
+			fields:  reflectFields,
+		})
+	}
+
+	return (*rtype)(unsafe.Pointer(typ.Get("reflectType").Unsafe())), reflect.Value{}
 }

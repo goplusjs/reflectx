@@ -68,6 +68,7 @@ func TestField(t *testing.T) {
 }
 
 func TestStructOfExport(t *testing.T) {
+	tyInt := reflect.TypeOf(0)
 	fs := []reflect.StructField{
 		reflect.StructField{
 			Name:    "x",
