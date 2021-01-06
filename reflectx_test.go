@@ -218,8 +218,9 @@ func TestNamedType(t *testing.T) {
 			t.Errorf("%v: have %v, want %v", nt.Kind(), s1, s2)
 		}
 		if nt2.Name() != name {
-			t.Errorf("name: have %v, want %v", nt2.Name(), name)
+			t.Errorf("name: have %v, want %v, %v,%v,  %v", nt2.Name(), name, nt2, nt2.Kind(), typ)
 		}
+		//log.Println(typ, nt, nt.Name(), nt.PkgPath())
 		if nt2.PkgPath() != pkgpath {
 			t.Errorf("pkgpath: have %v, want %v", nt2.PkgPath(), pkgpath)
 		}
@@ -233,7 +234,7 @@ var testInterfaceType = []reflect.Type{
 		Read(p []byte) (n int, err error)
 		Write(p []byte) (n int, err error)
 		Close() error
-	})(nil)),
+	})(nil)).Elem(),
 }
 
 func TestNamedInterface(t *testing.T) {

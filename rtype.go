@@ -334,3 +334,16 @@ func newType(styp reflect.Type, mcount int, xcount int) (rt *rtype, tt reflect.V
 	ut.moff = uint32(unsafe.Sizeof(uncommonType{}))
 	return
 }
+
+func NamedTypeOf(pkgpath string, name string, from reflect.Type) reflect.Type {
+	rt, _ := newType(from, 0, 0)
+	setTypeName(rt, pkgpath, name)
+	typ := toType(rt)
+	kind := TkType
+	if typ.Kind() == reflect.Struct {
+		typ = MethodOf(typ, nil)
+		kind |= TkMethod
+	}
+	ntypeMap[typ] = &Named{Name: name, PkgPath: pkgpath, Type: typ, From: from, Kind: kind}
+	return typ
+}

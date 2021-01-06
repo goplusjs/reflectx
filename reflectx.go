@@ -100,19 +100,6 @@ func NamedStructOf(pkgpath string, name string, fields []reflect.StructField) re
 	return NamedTypeOf(pkgpath, name, StructOf(fields))
 }
 
-func NamedTypeOf(pkgpath string, name string, from reflect.Type) reflect.Type {
-	rt, _ := newType(from, 0, 0)
-	setTypeName(rt, pkgpath, name)
-	typ := toType(rt)
-	kind := TkType
-	if typ.Kind() == reflect.Struct {
-		//	typ = MethodOf(typ, nil)
-		kind |= TkMethod
-	}
-	ntypeMap[typ] = &Named{Name: name, PkgPath: pkgpath, Type: typ, From: from, Kind: kind}
-	return typ
-}
-
 func SetTypeName(typ reflect.Type, pkgpath string, name string) {
 	setTypeName(totype(typ), pkgpath, name)
 }
@@ -123,11 +110,11 @@ func setTypeName(t *rtype, pkgpath string, name string) {
 		_, f := path.Split(pkgpath)
 		name = f + "." + name
 	}
-	t.tflag |= tflagNamed | tflagExtraStar
+	t.tflag |= tflagNamed | tflagExtraStar | tflagUncommon
 	t.str = resolveReflectName(newName("*"+name, "", exported))
-	if t.tflag&tflagUncommon == tflagUncommon {
-		toUncommonType(t).pkgPath = resolveReflectName(newName(pkgpath, "", false))
-	}
+	//if t.tflag&tflagUncommon == tflagUncommon {
+	toUncommonType(t).pkgPath = resolveReflectName(newName(pkgpath, "", false))
+	//}
 }
 
 func copyType(dst *rtype, src *rtype) {
@@ -176,11 +163,12 @@ func StructOf(fields []reflect.StructField) reflect.Type {
 			st.fields[i].name = newName(f.Name, string(f.Tag), true)
 		}
 	}
-	ms := extractEmbedMethod(typ)
-	if len(ms) == 0 {
-		return typ
-	}
-	return methodOf(typ, ms)
+	return typ
+	// ms := extractEmbedMethod(typ)
+	// if len(ms) == 0 {
+	// 	return typ
+	// }
+	// return methodOf(typ, ms)
 }
 
 // fnv1 incorporates the list of bytes into the hash x using the FNV-1 hash function.
@@ -217,4 +205,5 @@ func SetValue(v reflect.Value, x reflect.Value) {
 var (
 	tyEmptyInterface    = reflect.TypeOf((*interface{})(nil)).Elem()
 	tyEmptyInterfacePtr = reflect.TypeOf((*interface{})(nil))
+	tyEmptyStruct       = reflect.TypeOf((*struct{})(nil)).Elem()
 )
