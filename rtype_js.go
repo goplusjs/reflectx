@@ -200,18 +200,9 @@ func NamedTypeOf(pkgpath string, name string, from reflect.Type) (typ reflect.Ty
 	kind := from.Kind()
 	switch kind {
 	default:
-		if kind >= reflect.Bool && kind <= reflect.Complex128 ||
-			(kind == reflect.String || kind == reflect.UnsafePointer) {
-			sname := name
-			if pkgpath != "" {
-				sname = pkgpath + "." + name
-			}
-			t := fnNewType.Invoke(sizes[kind], kind, sname, true, pkgpath, isExported(name), nil)
-			// typ = reflectType(t)
-			// rt = totype(typ)
-			rt = reflectType(t)
-			typ = toType(rt)
-		}
+		obj := fnNewType.Invoke(sizes[kind], kind, name, true, pkgpath, false, nil)
+		rt = reflectType(obj)
+		typ = toType(rt)
 	case reflect.Array:
 		elem := NamedTypeOf(pkgpath, "_", from.Elem())
 		typ = reflect.ArrayOf(from.Len(), elem)
@@ -291,11 +282,7 @@ func NamedTypeOf(pkgpath string, name string, from reflect.Type) (typ reflect.Ty
 		d._in = s._in
 		d._out = s._out
 	case reflect.Interface:
-		sname := name
-		if pkgpath != "" {
-			sname = pkgpath + "." + name
-		}
-		t := fnNewType.Invoke(from.Size(), kind, sname, true, pkgpath, isExported(name), nil)
+		t := fnNewType.Invoke(from.Size(), kind, "", true, "", false, nil)
 		rt = reflectType(t)
 		typ = toType(rt)
 		src := totype(from)
