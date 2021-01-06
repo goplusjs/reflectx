@@ -112,9 +112,9 @@ func setTypeName(t *rtype, pkgpath string, name string) {
 	}
 	t.tflag |= tflagNamed | tflagExtraStar | tflagUncommon
 	t.str = resolveReflectName(newName("*"+name, "", exported))
-	//if t.tflag&tflagUncommon == tflagUncommon {
-	toUncommonType(t).pkgPath = resolveReflectName(newName(pkgpath, "", false))
-	//}
+	if t.tflag&tflagUncommon == tflagUncommon {
+		toUncommonType(t).pkgPath = resolveReflectName(newName(pkgpath, "", false))
+	}
 }
 
 func copyType(dst *rtype, src *rtype) {
@@ -138,6 +138,15 @@ var (
 )
 
 func StructOf(fields []reflect.StructField) reflect.Type {
+	typ := structOf(fields)
+	ms := extractEmbedMethod(typ)
+	if len(ms) == 0 {
+		return typ
+	}
+	return methodOf(typ, ms)
+}
+
+func structOf(fields []reflect.StructField) reflect.Type {
 	var anonymous []int
 	fs := make([]reflect.StructField, len(fields))
 	for i := 0; i < len(fields); i++ {
@@ -164,11 +173,6 @@ func StructOf(fields []reflect.StructField) reflect.Type {
 		}
 	}
 	return typ
-	// ms := extractEmbedMethod(typ)
-	// if len(ms) == 0 {
-	// 	return typ
-	// }
-	// return methodOf(typ, ms)
 }
 
 // fnv1 incorporates the list of bytes into the hash x using the FNV-1 hash function.

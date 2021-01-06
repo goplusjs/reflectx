@@ -210,6 +210,7 @@ func methodOf(styp reflect.Type, methods []reflect.Method) reflect.Type {
 	rt, tt := newType(styp, mcount, mcount)
 	prt, ptt := newType(reflect.PtrTo(styp), pcount, pcount)
 	rt.ptrToThis = resolveReflectType(prt)
+
 	(*ptrType)(unsafe.Pointer(prt)).elem = rt
 	setTypeName(rt, styp.PkgPath(), styp.Name())
 	typ := toType(rt)
@@ -231,6 +232,7 @@ func methodOf(styp reflect.Type, methods []reflect.Method) reflect.Type {
 		} else {
 			ftyp = reflect.FuncOf(append([]reflect.Type{typ}, in...), out, m.Type.IsVariadic())
 		}
+
 		funcImpl := (*makeFuncImpl)(tovalue(&m.Func).ptr)
 		funcImpl.ftyp = (*funcType)(unsafe.Pointer(totype(ftyp)))
 		sz := int(inTyp.Size())
