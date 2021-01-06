@@ -211,7 +211,9 @@ type funcType struct {
 	outCount uint16 // top bit is set if last input parameter is ...
 }
 
-func newType(styp reflect.Type, mcount int, xcount int) (rt *rtype, tt reflect.Value) {
+func newType(styp reflect.Type, mcount int, xcount int) (*rtype, []method) {
+	var tt reflect.Value
+	var rt *rtype
 	ort := totype(styp)
 	switch styp.Kind() {
 	case reflect.Struct:
@@ -328,11 +330,13 @@ func newType(styp reflect.Type, mcount int, xcount int) (rt *rtype, tt reflect.V
 	rt.ptrdata = ort.ptrdata
 	rt.str = resolveReflectName(ort.nameOff(ort.str))
 	ut := (*uncommonType)(unsafe.Pointer(tt.Elem().Field(1).UnsafeAddr()))
-	// copy(tt.Elem().Field(2).Slice(0, len(methods)).Interface().([]method), methods)
 	ut.mcount = uint16(mcount)
 	ut.xcount = uint16(xcount)
 	ut.moff = uint32(unsafe.Sizeof(uncommonType{}))
-	return
+	if styp.Kind() == reflect.Interface || styp.Kind() == reflect.Func {
+		return rt, nil
+	}
+	return rt, tt.Elem().Field(2).Slice(0, mcount).Interface().([]method)
 }
 
 func NamedTypeOf(pkgpath string, name string, from reflect.Type) reflect.Type {
@@ -346,4 +350,12 @@ func NamedTypeOf(pkgpath string, name string, from reflect.Type) reflect.Type {
 	}
 	ntypeMap[typ] = &Named{Name: name, PkgPath: pkgpath, Type: typ, From: from, Kind: kind}
 	return typ
+}
+
+func Interface(v reflect.Value) interface{} {
+	i := v.Interface()
+	if i != nil {
+		checkStoreMethodValue(reflect.ValueOf(i))
+	}
+	return i
 }

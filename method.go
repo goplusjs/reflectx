@@ -1,5 +1,3 @@
-// +build !js js,wasm
-
 package reflectx
 
 import (
@@ -302,8 +300,8 @@ func methodOf(styp reflect.Type, methods []reflect.Method) reflect.Type {
 			index++
 		}
 	}
-	copy(tt.Elem().Field(2).Slice(0, len(ms)).Interface().([]method), ms)
-	copy(ptt.Elem().Field(2).Slice(0, len(pms)).Interface().([]method), pms)
+	copy(tt, ms)
+	copy(ptt, pms)
 	typInfoMap[typ] = infos
 	typInfoMap[ptyp] = pinfos
 	return typ
@@ -435,14 +433,6 @@ func New(typ reflect.Type) reflect.Value {
 	v := reflect.New(typ)
 	checkStoreMethodValue(v)
 	return v
-}
-
-func Interface(v reflect.Value) interface{} {
-	i := v.Interface()
-	if i != nil {
-		checkStoreMethodValue(reflect.ValueOf(i))
-	}
-	return i
 }
 
 func MakeEmptyInterface(pkgpath string, name string) reflect.Type {
