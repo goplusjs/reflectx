@@ -138,15 +138,6 @@ var (
 )
 
 func StructOf(fields []reflect.StructField) reflect.Type {
-	typ := structOf(fields)
-	ms := extractEmbedMethod(typ)
-	if len(ms) == 0 {
-		return typ
-	}
-	return methodOf(typ, ms)
-}
-
-func structOf(fields []reflect.StructField) reflect.Type {
 	var anonymous []int
 	fs := make([]reflect.StructField, len(fields))
 	for i := 0; i < len(fields); i++ {

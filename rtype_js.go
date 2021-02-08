@@ -319,7 +319,7 @@ func newType(styp reflect.Type, xcount int, mcount int) (*rtype, []method) {
 			Name: unusedName(),
 			Type: tyEmptyStruct,
 		})
-		typ = structOf(fields)
+		typ = StructOf(fields)
 		rt = totype(typ)
 		st := toStructType(rt)
 		st.fields = st.fields[:len(st.fields)-1]
