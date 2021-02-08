@@ -398,7 +398,3 @@ func (t *funcType) in() []*rtype {
 func (t *funcType) out() []*rtype {
 	return t._out
 }
-
-func Interface(v reflect.Value) interface{} {
-	return v.Interface()
-}
