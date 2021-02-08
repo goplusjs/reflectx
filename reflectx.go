@@ -17,7 +17,6 @@
 package reflectx
 
 import (
-	"fmt"
 	"path"
 	"reflect"
 	"unicode"
@@ -68,18 +67,15 @@ func typeName(typ reflect.Type) string {
 }
 
 var (
-	ntypeMap       = make(map[reflect.Type]*Named)
-	typEmptyStruct = reflect.StructOf(nil)
+	ntypeMap = make(map[reflect.Type]*Named)
 )
 
 type TypeKind int
 
 const (
-	TkInvalid TypeKind = iota
-	TkStruct
-	TkMethod
+	TkInvalid TypeKind = 1 << iota
 	TkType
-	TkInterface
+	TkMethod
 )
 
 type Named struct {
@@ -95,51 +91,17 @@ func IsNamed(typ reflect.Type) bool {
 	return ok
 }
 
-func IsMethod(typ reflect.Type) bool {
-	v, ok := ntypeMap[typ]
-	return ok && v.Kind == TkMethod
-}
-
 func ToNamed(typ reflect.Type) (t *Named, ok bool) {
 	t, ok = ntypeMap[typ]
 	return
 }
 
 func NamedStructOf(pkgpath string, name string, fields []reflect.StructField) reflect.Type {
-	typ := StructOf(append(append([]reflect.StructField{}, fields...),
-		reflect.StructField{
-			Name: unusedName(),
-			Type: typEmptyStruct,
-		}))
-	nt := &Named{Name: name, PkgPath: pkgpath, Type: typ, Kind: TkStruct}
-	ntypeMap[typ] = nt
-	rt := totype(typ)
-	st := toStructType(rt)
-	st.fields = st.fields[:len(st.fields)-1]
-	setTypeName(rt, pkgpath, name)
-	return typ
+	return NamedTypeOf(pkgpath, name, StructOf(fields))
 }
 
-var (
-	index int
-)
-
-func unusedName() string {
-	index++
-	return fmt.Sprintf("Gop_unused_%v", index)
-}
-
-func emptyType() reflect.Type {
-	typ := reflect.StructOf([]reflect.StructField{
-		reflect.StructField{
-			Name: unusedName(),
-			Type: typEmptyStruct,
-		}})
-	rt := totype(typ)
-	st := toStructType(rt)
-	st.fields = st.fields[:len(st.fields)-1]
-	st.str = resolveReflectName(newName("unused", "", false))
-	return typ
+func SetTypeName(typ reflect.Type, pkgpath string, name string) {
+	setTypeName(totype(typ), pkgpath, name)
 }
 
 func setTypeName(t *rtype, pkgpath string, name string) {
@@ -148,17 +110,9 @@ func setTypeName(t *rtype, pkgpath string, name string) {
 		_, f := path.Split(pkgpath)
 		name = f + "." + name
 	}
-	t.tflag |= tflagNamed | tflagExtraStar
+	t.tflag |= tflagNamed | tflagExtraStar | tflagUncommon
 	t.str = resolveReflectName(newName("*"+name, "", exported))
-	switch t.Kind() {
-	case reflect.Array:
-	case reflect.Slice:
-	case reflect.Map:
-	case reflect.Ptr:
-	case reflect.Func:
-	case reflect.Chan:
-	default:
-		t.tflag |= tflagUncommon
+	if t.tflag&tflagUncommon == tflagUncommon {
 		toUncommonType(t).pkgPath = resolveReflectName(newName(pkgpath, "", false))
 	}
 }
@@ -179,6 +133,10 @@ func isExported(name string) bool {
 	return unicode.IsUpper(ch)
 }
 
+var (
+	DisableStructOfExportAllField bool
+)
+
 func StructOf(fields []reflect.StructField) reflect.Type {
 	var anonymous []int
 	fs := make([]reflect.StructField, len(fields))
@@ -194,11 +152,16 @@ func StructOf(fields []reflect.StructField) reflect.Type {
 		fs[i] = f
 	}
 	typ := reflect.StructOf(fs)
-	v := reflect.Zero(typ)
-	rt := (*Value)(unsafe.Pointer(&v)).typ
+	rt := totype(typ)
 	st := toStructType(rt)
 	for _, i := range anonymous {
 		st.fields[i].offsetEmbed |= 1
+	}
+	if !DisableStructOfExportAllField {
+		for i := 0; i < len(fs); i++ {
+			f := fs[i]
+			st.fields[i].name = newName(f.Name, string(f.Tag), true)
+		}
 	}
 	return typ
 }
@@ -209,10 +172,6 @@ func fnv1(x uint32, list string) uint32 {
 		x = x*16777619 ^ uint32(b)
 	}
 	return x
-}
-
-func hashName(pkgpath string, name string) string {
-	return fmt.Sprintf("Gop_Named_%d_%d", fnv1(0, pkgpath), fnv1(0, name))
 }
 
 func SetValue(v reflect.Value, x reflect.Value) {
@@ -237,3 +196,9 @@ func SetValue(v reflect.Value, x reflect.Value) {
 		v.Set(x)
 	}
 }
+
+var (
+	tyEmptyInterface    = reflect.TypeOf((*interface{})(nil)).Elem()
+	tyEmptyInterfacePtr = reflect.TypeOf((*interface{})(nil))
+	tyEmptyStruct       = reflect.TypeOf((*struct{})(nil)).Elem()
+)

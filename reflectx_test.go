@@ -67,6 +67,29 @@ func TestField(t *testing.T) {
 	}
 }
 
+func TestStructOfExport(t *testing.T) {
+	tyInt := reflect.TypeOf(0)
+	fs := []reflect.StructField{
+		reflect.StructField{
+			Name:    "x",
+			PkgPath: "main",
+			Type:    tyInt,
+		},
+		reflect.StructField{
+			Name:    "y",
+			PkgPath: "main",
+			Type:    tyInt,
+		},
+	}
+	typ := reflectx.NamedStructOf("main", "Point", fs)
+	v := reflect.New(typ).Elem()
+	v.Field(0).SetInt(100)
+	v.Field(1).SetInt(200)
+	if s := fmt.Sprint(v); s != "{100 200}" {
+		t.Fatalf("have %v, want {100 200}", s)
+	}
+}
+
 type Buffer struct {
 	*bytes.Buffer
 	size  int
@@ -75,21 +98,6 @@ type Buffer struct {
 }
 
 func TestStructOf(t *testing.T) {
-	defer func() {
-		v := recover()
-		if v == nil {
-			t.Fatalf("reflect.StructOf panic")
-		}
-	}()
-	typ := reflect.TypeOf((*Buffer)(nil)).Elem()
-	var fs []reflect.StructField
-	for i := 0; i < typ.NumField(); i++ {
-		fs = append(fs, typ.Field(i))
-	}
-	reflect.StructOf(fs)
-}
-
-func TestStructOfX(t *testing.T) {
 	defer func() {
 		v := recover()
 		if v != nil {
@@ -147,7 +155,7 @@ var (
 	fn2 = func(*nPoint, int, bool, []byte) int {
 		return 0
 	}
-	testNamedType = []interface{}{
+	testNamedValue = []interface{}{
 		true,
 		false,
 		int(2),
@@ -186,7 +194,8 @@ var (
 )
 
 func TestNamedType(t *testing.T) {
-	for i, v := range testNamedType {
+	pkgpath := "github.com/goplus/reflectx"
+	for i, v := range testNamedValue {
 		value := reflect.ValueOf(v)
 		typ := value.Type()
 		nt := reflectx.NamedTypeOf("github.com/goplus/reflectx", fmt.Sprintf("MyType%v", i), typ)
@@ -196,22 +205,63 @@ func TestNamedType(t *testing.T) {
 		if nt == typ {
 			t.Errorf("same type, %v", typ)
 		}
-		nt2 := reflectx.NamedTypeOf("github.com/goplus/reflectx", fmt.Sprintf("My_Type%v", i), typ)
+		name := fmt.Sprintf("My_Type%v", i)
+		nt2 := reflectx.NamedTypeOf(pkgpath, name, typ)
 		if nt == nt2 {
 			t.Errorf("same type, %v", nt)
 		}
 		nv := reflect.New(nt).Elem()
 		reflectx.SetValue(nv, value) //
-		s1 := fmt.Sprintf("%v", nv)
-		s2 := fmt.Sprintf("%v", v)
+		s1 := fmt.Sprint(reflectx.Interface(nv))
+		s2 := fmt.Sprint(v)
 		if s1 != s2 {
 			t.Errorf("%v: have %v, want %v", nt.Kind(), s1, s2)
 		}
-		named, ok := reflectx.ToNamed(nt)
-		if !ok {
-			t.Errorf("ToNamed error, %v", nt)
+		if nt2.Name() != name {
+			t.Errorf("name: have %v, want %v, %v,%v,  %v", nt2.Name(), name, nt2, nt2.Kind(), typ)
 		}
-		t.Log(named)
+		//log.Println(typ, nt, nt.Name(), nt.PkgPath())
+		if nt2.PkgPath() != pkgpath {
+			t.Errorf("pkgpath: have %v, want %v", nt2.PkgPath(), pkgpath)
+		}
+	}
+}
+
+var testInterfaceType = []reflect.Type{
+	reflect.TypeOf((*interface{})(nil)).Elem(),
+	reflect.TypeOf((*fmt.Stringer)(nil)).Elem(),
+	reflect.TypeOf((*interface {
+		Read(p []byte) (n int, err error)
+		Write(p []byte) (n int, err error)
+		Close() error
+	})(nil)).Elem(),
+}
+
+func TestNamedInterface(t *testing.T) {
+	pkgpath := reflect.TypeOf((*interface{})(nil)).Elem().PkgPath()
+	for i, styp := range testInterfaceType {
+		name := fmt.Sprintf("T%v", i)
+		typ := reflectx.NamedTypeOf(pkgpath, name, styp)
+		if typ.Name() != name {
+			t.Errorf("name: have %v, want %v", typ.Name(), name)
+		}
+		if typ.PkgPath() != pkgpath {
+			t.Errorf("pkgpath: have %v, want %v", typ.PkgPath(), pkgpath)
+		}
+		if typ.NumMethod() != styp.NumMethod() {
+			t.Errorf("num method: have %v, want %v", typ.NumMethod(), styp.NumMethod())
+		}
+		for i := 0; i < typ.NumMethod(); i++ {
+			if typ.Method(i) != styp.Method(i) {
+				t.Errorf("method: have %v, want %v", typ.Method(i), styp.Method(i))
+			}
+		}
+		if !typ.ConvertibleTo(styp) {
+			t.Errorf("%v cannot ConvertibleTo %v", typ, styp)
+		}
+		if !styp.ConvertibleTo(typ) {
+			t.Errorf("%v cannot ConvertibleTo %v", styp, typ)
+		}
 	}
 }
 

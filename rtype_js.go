@@ -3,6 +3,7 @@
 package reflectx
 
 import (
+	"fmt"
 	"reflect"
 	"unsafe"
 
@@ -10,14 +11,32 @@ import (
 )
 
 //go:linkname reflectType reflect.reflectType
-func reflectType(typ *js.Object) reflect.Type
+func reflectType(typ *js.Object) *rtype
 
 //go:linkname setKindType reflect.setKindType
 func setKindType(rt *rtype, kindType interface{})
 
+//go:linkname newNameOff reflect.newNameOff
+func newNameOff(n name) nameOff
+
+//go:linkname newTypeOff reflect.newTypeOff
+func newTypeOff(rt *rtype) typeOff
+
+// func jsType(typ Type) *js.Object {
+// 	return js.InternalObject(typ).Get("jsType")
+// }
+
+// func reflectType(typ *js.Object) *rtype {
+// 	return _reflectType(typ, internalStr)
+// }
+
 func toStructType(t *rtype) *structType {
 	kind := js.InternalObject(t).Get("kindType")
 	return (*structType)(unsafe.Pointer(kind.Unsafe()))
+}
+
+func toKindType(t *rtype) unsafe.Pointer {
+	return unsafe.Pointer(js.InternalObject(t).Get("kindType").Unsafe())
 }
 
 func toUncommonType(t *rtype) *uncommonType {
@@ -146,52 +165,82 @@ func getKindType(rt *rtype) unsafe.Pointer {
 	return (unsafe.Pointer)(js.InternalObject(rt).Get("kindType").Unsafe())
 }
 
+func tovalue(v *reflect.Value) *Value {
+	return (*Value)(unsafe.Pointer(v))
+}
+
+var (
+	index int
+)
+
+func unusedName() string {
+	index++
+	return fmt.Sprintf("Gop_unused_%v", index)
+}
+
+func emptyType() reflect.Type {
+	typ := reflect.StructOf([]reflect.StructField{
+		reflect.StructField{
+			Name: unusedName(),
+			Type: tyEmptyStruct,
+		}})
+	rt := totype(typ)
+	st := toStructType(rt)
+	st.fields = st.fields[:len(st.fields)-1]
+	st.str = resolveReflectName(newName("unused", "", false))
+	return typ
+}
+
+func hashName(pkgpath string, name string) string {
+	return fmt.Sprintf("Gop_Named_%d_%d", fnv1(0, pkgpath), fnv1(0, name))
+}
+
 func NamedTypeOf(pkgpath string, name string, from reflect.Type) (typ reflect.Type) {
-	kind := from.Kind()
-	if kind >= reflect.Bool && kind <= reflect.Complex128 ||
-		(kind == reflect.String || kind == reflect.UnsafePointer) {
-		sname := name
-		if pkgpath != "" {
-			sname = pkgpath + "." + name
-		}
-		t := fnNewType.Invoke(sizes[kind], kind, sname, true, pkgpath, isExported(name), nil)
-		typ = reflectType(t)
-		nt := &Named{Name: name, PkgPath: pkgpath, Type: typ, From: from, Kind: TkType}
-		ntypeMap[typ] = nt
-		return typ
-	}
+	rt, _ := newType(from, 0, 0)
+	setTypeName(rt, pkgpath, name)
+	typ = toType(rt)
+	nt := &Named{Name: name, PkgPath: pkgpath, Type: typ, From: from, Kind: TkType}
+	ntypeMap[typ] = nt
+	return
+}
+
+func newType(styp reflect.Type, xcount int, mcount int) (*rtype, []method) {
+	var rt *rtype
+	var typ reflect.Type
+	kind := styp.Kind()
 	switch kind {
+	default:
+		obj := fnNewType.Invoke(sizes[kind], kind, "", true, "", false, nil)
+		rt = reflectType(obj)
 	case reflect.Array:
-		elem := NamedTypeOf(pkgpath, "_", from.Elem())
-		typ = reflect.ArrayOf(from.Len(), elem)
-		dst := totype(typ)
-		src := totype(from)
-		copyType(dst, src)
-		d := (*arrayType)(getKindType(dst))
+		elem := NamedTypeOf("", "_", styp.Elem())
+		typ = reflect.ArrayOf(styp.Len(), elem)
+		rt = totype(typ)
+		src := totype(styp)
+		copyType(rt, src)
+		d := (*arrayType)(getKindType(rt))
 		s := (*arrayType)(getKindType(src))
 		d.elem = s.elem
 		d.slice = s.slice
 		d.len = s.len
-		setTypeName(dst, pkgpath, name)
 	case reflect.Slice:
-		elem := NamedTypeOf(pkgpath, "_", from.Elem())
+		elem := NamedTypeOf("", "_", styp.Elem())
 		typ = reflect.SliceOf(elem)
-		rt := totype(typ)
-		setTypeName(rt, pkgpath, name)
+		rt = totype(typ)
 		dst := totype(typ)
-		src := totype(from)
+		src := totype(styp)
 		copyType(dst, src)
 		d := (*sliceType)(getKindType(dst))
 		s := (*sliceType)(getKindType(src))
 		d.elem = s.elem
 	case reflect.Map:
-		key := NamedTypeOf(pkgpath, "_", from.Key())
-		elem := NamedTypeOf(pkgpath, "_", from.Elem())
+		key := NamedTypeOf("", "_", styp.Key())
+		elem := NamedTypeOf("", "_", styp.Elem())
 		typ = reflect.MapOf(key, elem)
-		dst := totype(typ)
-		src := totype(from)
-		copyType(dst, src)
-		d := (*mapType)(getKindType(dst))
+		rt = totype(typ)
+		src := totype(styp)
+		copyType(rt, src)
+		d := (*mapType)(getKindType(rt))
 		s := (*mapType)(getKindType(src))
 		d.key = s.key
 		d.elem = s.elem
@@ -201,72 +250,90 @@ func NamedTypeOf(pkgpath string, name string, from reflect.Type) (typ reflect.Ty
 		d.valuesize = s.valuesize
 		d.bucketsize = s.bucketsize
 		d.flags = s.flags
-		dst.str = resolveReflectName(newName(name, "", isExported(name)))
-		setTypeName(dst, pkgpath, name)
 	case reflect.Ptr:
-		elem := NamedTypeOf(pkgpath, "_", from.Elem())
+		elem := NamedTypeOf("", "_", styp.Elem())
 		typ = reflect.PtrTo(elem)
-		dst := totype(typ)
-		src := totype(from)
-		copyType(dst, src)
-		d := (*ptrType)(getKindType(dst))
+		rt = totype(typ)
+		src := totype(styp)
+		copyType(rt, src)
+		d := (*ptrType)(getKindType(rt))
 		s := (*ptrType)(getKindType(src))
 		d.elem = s.elem
-		setTypeName(dst, pkgpath, name)
 	case reflect.Chan:
-		elem := NamedTypeOf(pkgpath, "_", from.Elem())
-		typ = reflect.ChanOf(from.ChanDir(), elem)
-		dst := totype(typ)
-		src := totype(from)
-		copyType(dst, src)
-		d := (*chanType)(getKindType(dst))
+		elem := NamedTypeOf("", "_", styp.Elem())
+		typ = reflect.ChanOf(styp.ChanDir(), elem)
+		rt = totype(typ)
+		src := totype(styp)
+		copyType(rt, src)
+		d := (*chanType)(getKindType(rt))
 		s := (*chanType)(getKindType(src))
 		d.elem = s.elem
 		d.dir = s.dir
-		setTypeName(dst, pkgpath, name)
 	case reflect.Func:
-		numIn := from.NumIn()
+		numIn := styp.NumIn()
 		in := make([]reflect.Type, numIn, numIn)
 		for i := 0; i < numIn; i++ {
-			in[i] = from.In(i)
+			in[i] = styp.In(i)
 		}
-		numOut := from.NumOut()
+		numOut := styp.NumOut()
 		out := make([]reflect.Type, numOut, numOut)
 		for i := 0; i < numOut; i++ {
-			out[i] = from.Out(i)
+			out[i] = styp.Out(i)
 		}
 		out = append(out, emptyType())
-		typ = reflect.FuncOf(in, out, from.IsVariadic())
-		dst := totype(typ)
-		src := totype(from)
-		d := (*jsFuncType)(getKindType(dst))
+		typ = reflect.FuncOf(in, out, styp.IsVariadic())
+		rt = totype(typ)
+		src := totype(styp)
+		d := (*jsFuncType)(getKindType(rt))
 		s := (*jsFuncType)(getKindType(src))
 		d.inCount = s.inCount
 		d.outCount = s.outCount
 		d._in = s._in
 		d._out = s._out
-		setTypeName(dst, pkgpath, name)
-	default:
+	case reflect.Interface:
+		t := fnNewType.Invoke(styp.Size(), kind, "", true, "", false, nil)
+		rt = reflectType(t)
+		typ = toType(rt)
+		src := totype(styp)
+		copyType(rt, src)
+		d := (*interfaceType)(getKindType(rt))
+		s := (*interfaceType)(getKindType(src))
+		for _, m := range s.methods {
+			d.methods = append(d.methods, imethod{
+				name: resolveReflectName(s.nameOff(m.name)),
+				typ:  resolveReflectType(s.typeOff(m.typ)),
+			})
+		}
+	case reflect.Struct:
 		var fields []reflect.StructField
-		if from.Kind() == reflect.Struct {
-			for i := 0; i < from.NumField(); i++ {
-				fields = append(fields, from.Field(i))
+		if styp.Kind() == reflect.Struct {
+			for i := 0; i < styp.NumField(); i++ {
+				fs := styp.Field(i)
+				if !isExported(fs.Name) {
+					fs.PkgPath = "main"
+				}
+				fields = append(fields, fs)
 			}
 		}
 		fields = append(fields, reflect.StructField{
-			Name: hashName(pkgpath, name),
-			Type: typEmptyStruct,
+			Name: unusedName(),
+			Type: tyEmptyStruct,
 		})
 		typ = StructOf(fields)
-		rt := totype(typ)
+		rt = totype(typ)
 		st := toStructType(rt)
 		st.fields = st.fields[:len(st.fields)-1]
-		copyType(rt, totype(from))
-		setTypeName(rt, pkgpath, name)
+		copyType(rt, totype(styp))
 	}
-	nt := &Named{Name: name, PkgPath: pkgpath, Type: typ, From: from, Kind: TkType}
-	ntypeMap[typ] = nt
-	return typ
+	ut := toUncommonType(rt)
+	ut.mcount = uint16(mcount)
+	ut.xcount = uint16(xcount)
+	ut.moff = uint32(unsafe.Sizeof(uncommonType{}))
+	ut._methods = make([]method, mcount, mcount)
+	if kind == reflect.Func || kind == reflect.Interface {
+		return rt, nil
+	}
+	return rt, ut._methods
 }
 
 func totype(typ reflect.Type) *rtype {
@@ -282,4 +349,56 @@ type jsFuncType struct {
 
 	_in  []*rtype
 	_out []*rtype
+}
+
+type makeFuncImpl struct {
+	code   uintptr
+	stack  *bitVector // ptrmap for both args and results
+	argLen uintptr    // just args
+	ftyp   *funcType
+	fn     func([]reflect.Value) []reflect.Value
+}
+
+type bitVector struct {
+	n    uint32 // number of bits
+	data []byte
+}
+
+func internalStr(strObj *js.Object) string {
+	var c struct{ str string }
+	js.InternalObject(c).Set("str", strObj) // get string without internalizing
+	return c.str
+}
+
+// func isWrapped(typ Type) bool {
+// 	return jsType(typ).Get("wrapped").Bool()
+// }
+
+// func copyStruct(dst, src *js.Object, typ Type) {
+// 	fields := jsType(typ).Get("fields")
+// 	for i := 0; i < fields.Length(); i++ {
+// 		prop := fields.Index(i).Get("prop").String()
+// 		dst.Set(prop, src.Get(prop))
+// 	}
+// }
+
+type funcType struct {
+	rtype    `reflect:"func"`
+	inCount  uint16
+	outCount uint16
+
+	_in  []*rtype
+	_out []*rtype
+}
+
+func (t *funcType) in() []*rtype {
+	return t._in
+}
+
+func (t *funcType) out() []*rtype {
+	return t._out
+}
+
+func Interface(v reflect.Value) interface{} {
+	return v.Interface()
 }
