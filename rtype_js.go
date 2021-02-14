@@ -59,6 +59,29 @@ type uncommonType struct {
 	_methods []method
 }
 
+func (t *uncommonType) exportedMethods() []method {
+	if t.xcount == 0 {
+		return nil
+	}
+	return t._methods[:t.xcount:t.xcount]
+}
+
+func (t *rtype) ptrTo() *rtype {
+	return reflectType(js.Global.Call("$ptrType", jsType(t)))
+}
+
+func (t *rtype) uncommon() *uncommonType {
+	return toUncommonType(t)
+}
+
+func (t *rtype) exportedMethods() []method {
+	ut := t.uncommon()
+	if ut == nil {
+		return nil
+	}
+	return ut.exportedMethods()
+}
+
 /*
 var $kindBool = 1;
 var $kindInt = 2;
@@ -398,3 +421,36 @@ func (t *funcType) in() []*rtype {
 func (t *funcType) out() []*rtype {
 	return t._out
 }
+
+func jsType(typ *rtype) *js.Object {
+	return js.InternalObject(typ).Get("jsType")
+}
+
+// func (v Value) object() *js.Object {
+// 	if v.typ.Kind() == reflect.Array || v.typ.Kind() == reflect.Struct {
+// 		return js.InternalObject(v.ptr)
+// 	}
+// 	if v.flag&flagIndir != 0 {
+// 		val := js.InternalObject(v.ptr).Call("$get")
+// 		if val != js.Global.Get("$ifaceNil") && val.Get("constructor") != jsType(v.typ) {
+// 			switch v.typ.Kind() {
+// 			case reflect.Uint64, reflect.Int64:
+// 				val = jsType(v.typ).New(val.Get("$high"), val.Get("$low"))
+// 			case reflect.Complex64, reflect.Complex128:
+// 				val = jsType(v.typ).New(val.Get("$real"), val.Get("$imag"))
+// 			case reflect.Slice:
+// 				if val == val.Get("constructor").Get("nil") {
+// 					val = jsType(v.typ).Get("nil")
+// 					break
+// 				}
+// 				newVal := jsType(v.typ).New(val.Get("$array"))
+// 				newVal.Set("$offset", val.Get("$offset"))
+// 				newVal.Set("$length", val.Get("$length"))
+// 				newVal.Set("$capacity", val.Get("$capacity"))
+// 				val = newVal
+// 			}
+// 		}
+// 		return js.InternalObject(val.Unsafe())
+// 	}
+// 	return js.InternalObject(v.ptr)
+// }
