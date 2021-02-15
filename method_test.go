@@ -90,14 +90,15 @@ func TestIntMethodOf(t *testing.T) {
 		mSet,
 		mAppend,
 	})
-	// ptrType := reflect.PtrTo(typ)
+	ptrType := reflect.PtrTo(typ)
 
-	// if n := typ.NumMethod(); n != 2 {
-	// 	t.Fatal("typ.NumMethod()", n)
-	// }
-	// if n := ptrType.NumMethod(); n != 3 {
-	// 	t.Fatal("ptrTyp.NumMethod()", n)
-	// }
+	if n := typ.NumMethod(); n != 2 {
+		t.Fatal("typ.NumMethod()", n)
+	}
+	if n := ptrType.NumMethod(); n != 3 {
+		t.Fatal("ptrTyp.NumMethod()", n)
+	}
+
 	x := reflectx.New(typ).Elem()
 	x.Addr().MethodByName("Set").Call([]reflect.Value{reflect.ValueOf(100)})
 	// String
@@ -140,7 +141,7 @@ func (i IntSlice) Append(v ...int) int {
 	return sum
 }
 
-func _TestSliceMethodOf(t *testing.T) {
+func TestSliceMethodOf(t *testing.T) {
 	// IntSlice type
 	var i IntSlice
 	i.Set(100, 200, 300)
@@ -204,6 +205,8 @@ func _TestSliceMethodOf(t *testing.T) {
 	}
 
 	x := reflectx.New(typ).Elem()
+	x.MethodByName("String").Call(nil)
+
 	x.Addr().MethodByName("Set").Call([]reflect.Value{reflect.ValueOf(100), reflect.ValueOf(200), reflect.ValueOf(300)})
 
 	// String
@@ -244,7 +247,7 @@ func (i IntArray) Scale(v int) IntArray {
 	return IntArray{i[0] * v, i[1] * v}
 }
 
-func _TestArrayMethodOf(t *testing.T) {
+func TestArrayMethodOf(t *testing.T) {
 	// IntArray
 	var i IntArray
 	i.Set(100, 200)
@@ -457,7 +460,7 @@ func makeDynamicPointType() reflect.Type {
 	return typ
 }
 
-func _TestStructMethodOf(t *testing.T) {
+func TestStructMethodOf(t *testing.T) {
 	// Point
 	var i Point
 	i.Set(100, 200)
@@ -671,7 +674,7 @@ var (
 	}
 )
 
-func _TestMethodStack(t *testing.T) {
+func TestMethodStack(t *testing.T) {
 	// make Point
 	fs := []reflect.StructField{
 		reflect.StructField{Name: "X", Type: reflect.TypeOf(0)},

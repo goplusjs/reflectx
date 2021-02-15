@@ -22,6 +22,9 @@ func newNameOff(n name) nameOff
 //go:linkname newTypeOff reflect.newTypeOff
 func newTypeOff(rt *rtype) typeOff
 
+//go:linkname newUncommonType reflect.newUncommonType
+func newUncommonType(mcount, xcount int) *uncommonType
+
 // func jsType(typ Type) *js.Object {
 // 	return js.InternalObject(typ).Get("jsType")
 // }
@@ -42,12 +45,15 @@ func toKindType(t *rtype) unsafe.Pointer {
 func toUncommonType(t *rtype) *uncommonType {
 	kind := js.InternalObject(t).Get("uncommonType")
 	if kind == js.Undefined {
-		ut := &uncommonType{}
-		js.InternalObject(t).Set("uncommonType", js.InternalObject(ut))
-		js.InternalObject(ut).Set("rtype", js.InternalObject(t))
-		return ut
+		return nil
 	}
 	return (*uncommonType)(unsafe.Pointer(kind.Unsafe()))
+}
+
+func setUncommonType(t *rtype, u *uncommonType) {
+	t.tflag |= tflagUncommon
+	js.InternalObject(t).Set("uncommonType", js.InternalObject(u))
+	js.InternalObject(u).Set("jsType", jsType(t))
 }
 
 type uncommonType struct {
@@ -230,10 +236,15 @@ func NamedTypeOf(pkgpath string, name string, from reflect.Type) (typ reflect.Ty
 func newType(styp reflect.Type, xcount int, mcount int) (*rtype, []method) {
 	var rt *rtype
 	var typ reflect.Type
+	name := styp.Name()
+	pkgPath := styp.PkgPath()
+	if name != "" && pkgPath != "" {
+		name = pkgPath + "." + name
+	}
 	kind := styp.Kind()
 	switch kind {
 	default:
-		obj := fnNewType.Invoke(sizes[kind], kind, "", true, "", false, nil)
+		obj := fnNewType.Invoke(sizes[kind], kind, name, true, "", false, nil)
 		rt = reflectType(obj)
 	case reflect.Array:
 		elem := NamedTypeOf("", "_", styp.Elem())
@@ -348,11 +359,8 @@ func newType(styp reflect.Type, xcount int, mcount int) (*rtype, []method) {
 		st.fields = st.fields[:len(st.fields)-1]
 		copyType(rt, totype(styp))
 	}
-	ut := toUncommonType(rt)
-	ut.mcount = uint16(mcount)
-	ut.xcount = uint16(xcount)
-	ut.moff = uint32(unsafe.Sizeof(uncommonType{}))
-	ut._methods = make([]method, mcount, mcount)
+	ut := newUncommonType(mcount, xcount)
+	setUncommonType(rt, ut)
 	if kind == reflect.Func || kind == reflect.Interface {
 		return rt, nil
 	}

@@ -4,7 +4,6 @@ package reflectx
 
 import (
 	"fmt"
-	"log"
 	"reflect"
 	"sort"
 	"strings"
@@ -22,7 +21,16 @@ func Interface(v reflect.Value) interface{} {
 }
 
 func MethodByIndex(typ reflect.Type, index int) reflect.Method {
-	return typ.Method(index)
+	m := typ.Method(index)
+	m.Func = reflect.MakeFunc(m.Type, func(args []reflect.Value) []reflect.Value {
+		recv := args[0].MethodByName(m.Name)
+		if m.Type.IsVariadic() {
+			return recv.CallSlice(args[1:])
+		} else {
+			return recv.Call(args[1:])
+		}
+	})
+	return m
 }
 
 func MethodByName(typ reflect.Type, name string) (m reflect.Method, ok bool) {
@@ -84,12 +92,16 @@ func methodOf(styp reflect.Type, methods []reflect.Method) reflect.Type {
 	//var index int
 	jstyp := jsType(rt)
 	jstyp.Set("methodSetCache", nil)
+	jsmscache := js.Global.Get("Array").New()
+	pjsmscache := js.Global.Get("Array").New()
 	//jstyp.Set("exported", true)
 	// jstyp.Set("named", true)
-	jstyp.Set("string", styp.String())
+	//jstyp.Set("string", styp.String())
 	// jstyp.Set("reflectType", js.Undefined)
 
 	jsms := jstyp.Get("methods")
+	//jsms := js.Global.Get("Array").New()
+	//jstyp.Set("methods", jsms)
 	jsproto := jstyp.Get("prototype")
 
 	// enable uncommonType ptrTo
@@ -102,15 +114,15 @@ func methodOf(styp reflect.Type, methods []reflect.Method) reflect.Type {
 	//jstyp.Set("string", "reflectx.T")
 	ptyp := reflect.PtrTo(typ)
 	prt := totype(ptyp)
+	//pjstyp := jsType(prt)
 	pjstyp.Set("methodSetCache", nil)
 	pjsms := pjstyp.Get("methods")
+	//pjsms := js.Global.Get("Array").New()
+	//pjstyp.Set("methods", pjsms)
 	pjsproto := pjstyp.Get("prototype")
 
-	ut := toUncommonType(prt)
-	ut.mcount = uint16(pcount)
-	ut.xcount = uint16(pcount)
-	ut.moff = uint32(unsafe.Sizeof(uncommonType{}))
-	ut._methods = make([]method, pcount, pcount)
+	ut := newUncommonType(pcount, pcount)
+	setUncommonType(prt, ut)
 
 	index := -1
 	pindex := -1
@@ -149,16 +161,21 @@ func methodOf(styp reflect.Type, methods []reflect.Method) reflect.Type {
 			pjsms.SetIndex(pindex, fn)
 		} else {
 			jsms.SetIndex(index, fn)
+			jsmscache.SetIndex(index, fn)
 		}
-		ut._methods[i].name = resolveReflectName(newName(m.Name, "", true))
-		ut._methods[i].mtyp = resolveReflectType(totype(ntyp))
+		pjsmscache.SetIndex(i, fn)
+
+		mname := resolveReflectName(newName(m.Name, "", true))
+		mtyp := resolveReflectType(totype(ntyp))
+		ut._methods[i].name = mname
+		ut._methods[i].mtyp = mtyp
 		if !pointer {
-			ums[index].name = resolveReflectName(newName(m.Name, "", true))
-			ums[index].mtyp = resolveReflectType(totype(ntyp))
+			ums[index].name = mname
+			ums[index].mtyp = mtyp
 		}
-		fnName := m.Name
+		//fnName := m.Name
 		pjsproto.Set(m.Name, js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
-			log.Println("=======> pjs", fnName)
+			// log.Println("=======> pjs", fnName)
 			if pointer {
 				fnTyp._in = _pin
 			} else {
@@ -178,8 +195,8 @@ func methodOf(styp reflect.Type, methods []reflect.Method) reflect.Type {
 			}
 			return js.InternalObject(tfn.ptr).Invoke(iargs...)
 		}))
-		jsproto.Set(js.InternalObject(m.Name).String(), js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
-			log.Println("=======> js", fnName, len(args))
+		jsproto.Set(m.Name, js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
+			// log.Println("=======> js", fnName, len(args))
 			fnTyp._in = _in
 			fnTyp.inCount++
 			defer func() {
@@ -194,12 +211,32 @@ func methodOf(styp reflect.Type, methods []reflect.Method) reflect.Type {
 			return js.InternalObject(tfn.ptr).Invoke(iargs...)
 		}))
 	}
+	jstyp.Set("methodSetCache", jsmscache)
+	// jstyp.Set("reflectType", js.Undefined)
+	pjstyp.Set("methodSetCache", pjsmscache)
+	// pjstyp.Set("reflectType", js.Undefined)
+	//typ = toType(reflectType(jstyp))
+	// ptyp = reflect.PtrTo(typ)
+
+	// typ = toType(reflectType(jstyp))
+	// ptyp = toType(reflectType(pjstyp))
+	//typ2 := toType(reflectType(jstyp))
+	//log.Println("---->", jsmscache.Length(), typ2.NumMethod())
+
 	// t := reflect.TypeOf((*T)(nil)).Elem()
 	// t0 := reflect.TypeOf((*fmt.Stringer)(nil)).Elem()
 	// v0 := reflect.New(t).Elem()
 	// v1 := reflect.New(typ).Elem()
 	// log.Println("---> conv", t.Name(), v0.Convert(t0))
 	// log.Println("---> conv", typ.Name(), v1.Convert(t0))
+	// log.Println("------> typ", typ.NumMethod(), typ.Kind())
+	// for i := 0; i < typ.NumMethod(); i++ {
+	// 	log.Println("->", i, typ.Method(i))
+	// }
+	// log.Println("------> ptyp", ptyp.NumMethod())
+	// for i := 0; i < ptyp.NumMethod(); i++ {
+	// 	log.Println("->", i, ptyp.Method(i))
+	// }
 
 	return typ
 }
