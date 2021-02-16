@@ -88,6 +88,10 @@ func TestStructOfExport(t *testing.T) {
 	if s := fmt.Sprint(v.Interface()); s != "{100 200}" {
 		t.Fatalf("have %v, want {100 200}", s)
 	}
+	v2 := reflect.NewAt(typ, unsafe.Pointer(v.Addr().Pointer())).Elem()
+	if s := fmt.Sprint(v2.Interface()); s != "{100 200}" {
+		t.Fatalf("have %v, want {100 200}", s)
+	}
 }
 
 type Buffer struct {

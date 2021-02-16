@@ -3,7 +3,6 @@
 package reflectx
 
 import (
-	"fmt"
 	"reflect"
 	"unsafe"
 
@@ -205,28 +204,6 @@ var (
 	index int
 )
 
-func unusedName() string {
-	index++
-	return fmt.Sprintf("Gop_unused_%v", index)
-}
-
-func emptyType() reflect.Type {
-	typ := reflect.StructOf([]reflect.StructField{
-		reflect.StructField{
-			Name: unusedName(),
-			Type: tyEmptyStruct,
-		}})
-	rt := totype(typ)
-	st := toStructType(rt)
-	st.fields = st.fields[:len(st.fields)-1]
-	st.str = resolveReflectName(newName("unused", "", false))
-	return typ
-}
-
-func hashName(pkgpath string, name string) string {
-	return fmt.Sprintf("Gop_Named_%d_%d", fnv1(0, pkgpath), fnv1(0, name))
-}
-
 func NamedTypeOf(pkg string, name string, from reflect.Type) (typ reflect.Type) {
 	rt, _ := newType(pkg, name, from, 0, 0)
 	setTypeName(rt, pkg, name)
@@ -241,7 +218,7 @@ func newType(pkg string, name string, styp reflect.Type, xcount int, mcount int)
 	var obj *js.Object
 	switch kind {
 	default:
-		obj = fnNewType.Invoke(sizes[kind], kind, name, true, pkg, false, nil)
+		obj = fnNewType.Invoke(styp.Size(), kind, name, true, pkg, false, nil)
 	case reflect.Array:
 		obj = fnNewType.Invoke(styp.Size(), kind, name, true, pkg, false, nil)
 		obj.Call("init", jsType(styp.Elem()), styp.Len())
