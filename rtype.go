@@ -211,7 +211,7 @@ type funcType struct {
 	outCount uint16 // top bit is set if last input parameter is ...
 }
 
-func newType(styp reflect.Type, mcount int, xcount int) (*rtype, []method) {
+func newType(pkg string, name string, styp reflect.Type, mcount int, xcount int) (*rtype, []method) {
 	var tt reflect.Value
 	var rt *rtype
 	ort := totype(styp)
@@ -340,7 +340,7 @@ func newType(styp reflect.Type, mcount int, xcount int) (*rtype, []method) {
 }
 
 func NamedTypeOf(pkgpath string, name string, from reflect.Type) reflect.Type {
-	rt, _ := newType(from, 0, 0)
+	rt, _ := newType(pkgpath, name, from, 0, 0)
 	setTypeName(rt, pkgpath, name)
 	typ := toType(rt)
 	kind := TkType

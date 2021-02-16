@@ -102,8 +102,8 @@ func methodOf(styp reflect.Type, methods []reflect.Method) reflect.Type {
 		}
 	}
 	orgtyp := styp
-	rt, tt := newType(styp, mcount, mcount)
-	prt, ptt := newType(reflect.PtrTo(styp), pcount, pcount)
+	rt, tt := newType("", "", styp, mcount, mcount)
+	prt, ptt := newType("", "", reflect.PtrTo(styp), pcount, pcount)
 	rt.ptrToThis = resolveReflectType(prt)
 
 	(*ptrType)(unsafe.Pointer(prt)).elem = rt

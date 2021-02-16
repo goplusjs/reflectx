@@ -210,7 +210,7 @@ func InterfaceOf(styp reflect.Type, embedded []reflect.Type, methods []reflect.M
 		}
 		return n < 0
 	})
-	rt, _ := newType(styp, 0, 0)
+	rt, _ := newType(styp.PkgPath(), styp.Name(), styp, 0, 0)
 	st := (*interfaceType)(unsafe.Pointer(rt))
 	st.methods = nil
 	var lastname string

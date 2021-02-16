@@ -85,7 +85,7 @@ func methodOf(styp reflect.Type, methods []reflect.Method) reflect.Type {
 	}
 	_ = pcount
 	orgtyp := styp
-	rt, ums := newType(styp, mcount, mcount)
+	rt, ums := newType(styp.PkgPath(), styp.Name(), styp, mcount, mcount)
 	setTypeName(rt, styp.PkgPath(), styp.Name())
 	typ := toType(rt)
 
@@ -173,9 +173,8 @@ func methodOf(styp reflect.Type, methods []reflect.Method) reflect.Type {
 			ums[index].name = mname
 			ums[index].mtyp = mtyp
 		}
-		//fnName := m.Name
+		// fnName := m.Name
 		pjsproto.Set(m.Name, js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
-			// log.Println("=======> pjs", fnName)
 			if pointer {
 				fnTyp._in = _pin
 			} else {
@@ -222,21 +221,6 @@ func methodOf(styp reflect.Type, methods []reflect.Method) reflect.Type {
 	// ptyp = toType(reflectType(pjstyp))
 	//typ2 := toType(reflectType(jstyp))
 	//log.Println("---->", jsmscache.Length(), typ2.NumMethod())
-
-	// t := reflect.TypeOf((*T)(nil)).Elem()
-	// t0 := reflect.TypeOf((*fmt.Stringer)(nil)).Elem()
-	// v0 := reflect.New(t).Elem()
-	// v1 := reflect.New(typ).Elem()
-	// log.Println("---> conv", t.Name(), v0.Convert(t0))
-	// log.Println("---> conv", typ.Name(), v1.Convert(t0))
-	// log.Println("------> typ", typ.NumMethod(), typ.Kind())
-	// for i := 0; i < typ.NumMethod(); i++ {
-	// 	log.Println("->", i, typ.Method(i))
-	// }
-	// log.Println("------> ptyp", ptyp.NumMethod())
-	// for i := 0; i < ptyp.NumMethod(); i++ {
-	// 	log.Println("->", i, ptyp.Method(i))
-	// }
 
 	return typ
 }

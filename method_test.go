@@ -322,6 +322,8 @@ func TestArrayMethodOf(t *testing.T) {
 	}
 
 	x := reflectx.New(typ).Elem()
+	x.Index(0).SetInt(1)
+	x.Index(1).SetInt(2)
 	x.Addr().MethodByName("Set").Call([]reflect.Value{reflect.ValueOf(100), reflect.ValueOf(200)})
 
 	// String
