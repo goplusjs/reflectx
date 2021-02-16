@@ -373,23 +373,62 @@ func newType(pkg string, name string, styp reflect.Type, xcount int, mcount int)
 		// 	})
 		// }
 	case reflect.Struct:
-		var fields []reflect.StructField
+		fields := js.Global.Get("Array").New()
 		for i := 0; i < styp.NumField(); i++ {
-			fs := styp.Field(i)
-			if !isExported(fs.Name) {
-				fs.PkgPath = "main"
-			}
-			fields = append(fields, fs)
+			sf := styp.Field(i)
+			jsf := js.Global.Get("Object").New()
+			jsf.Set("prop", js.InternalObject(sf.Name))
+			jsf.Set("name", js.InternalObject(sf.Name))
+			jsf.Set("exported", true)
+			jsf.Set("typ", jsType(sf.Type))
+			jsf.Set("tag", js.InternalObject(sf.Tag))
+			jsf.Set("embedded", sf.Anonymous)
+			fields.SetIndex(i, jsf)
 		}
-		fields = append(fields, reflect.StructField{
-			Name: unusedName(),
-			Type: tyEmptyStruct,
+		fn := js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
+			this.Set("$val", this)
+			for i := 0; i < fields.Length(); i++ {
+				f := fields.Index(i)
+				if len(args) > i && args[i] != js.Undefined {
+					this.Set(f.Get("prop").String(), args[i])
+				} else {
+					this.Set(f.Get("prop").String(), f.Get("typ").Call("zero"))
+				}
+			}
+			return nil
 		})
-		typ = StructOf(fields)
-		rt = totype(typ)
-		st := toStructType(rt)
-		st.fields = st.fields[:len(st.fields)-1]
-		copyType(rt, totype(styp))
+		obj := fnNewType.Invoke(styp.Size(), kind, styp.Name(), false, pkg, false, fn)
+		obj.Call("init", pkg, fields)
+		// jsf := js.Global.Get("Object").New()
+		// n := unusedName()
+		// jsf.Set("prop", n)
+		// jsf.Set("name", n)
+		// jsf.Set("exported", false)
+		// jsf.Set("typ", jsType(tyEmptyStruct))
+		// //jsf.Set("tag", "")
+		// ar = append(ar, jsf)
+		//obj := js.Global.Call("$structType", pkg, ar)
+		rt = reflectType(obj)
+		typ = toType(rt)
+		// println("->", styp)
+		// println("=>", typ)
+		//jsType(rt).Set("fields", jsType(styp).Get("fields"))
+		// var fields []reflect.StructField
+		// for i := 0; i < styp.NumField(); i++ {
+		// 	fs := styp.Field(i)
+		// 	if !isExported(fs.Name) {
+		// 		fs.PkgPath = "main"
+		// 	}
+		// 	fields = append(fields, fs)
+		// }
+		// fields = append(fields, reflect.StructField{
+		// 	Name: unusedName(),
+		// 	Type: tyEmptyStruct,
+		// })
+		// typ = StructOf(fields)
+		// rt = totype(typ)
+		//st.fields = st.fields[:len(st.fields)-1]
+		// copyType(rt, totype(styp))
 	}
 	_ = typ
 	ut := toUncommonType(rt)

@@ -85,7 +85,7 @@ func TestStructOfExport(t *testing.T) {
 	v := reflect.New(typ).Elem()
 	v.Field(0).SetInt(100)
 	v.Field(1).SetInt(200)
-	if s := fmt.Sprint(v); s != "{100 200}" {
+	if s := fmt.Sprint(v.Interface()); s != "{100 200}" {
 		t.Fatalf("have %v, want {100 200}", s)
 	}
 }
