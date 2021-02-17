@@ -21,9 +21,6 @@ func newNameOff(n name) nameOff
 //go:linkname newTypeOff reflect.newTypeOff
 func newTypeOff(rt *rtype) typeOff
 
-//go:linkname newUncommonType reflect.newUncommonType
-func newUncommonType(mcount, xcount int) *uncommonType
-
 //go:linkname makeValue reflect.makeValue
 func makeValue(t *rtype, v *js.Object, fl flag) reflect.Value
 
@@ -213,6 +210,27 @@ func NamedTypeOf(pkg string, name string, from reflect.Type) (typ reflect.Type) 
 	return
 }
 
+type mtemp struct {
+}
+
+func (*mtemp) test() {
+}
+
+var (
+	jsUncommonTyp = js.InternalObject(reflect.TypeOf((*mtemp)(nil))).Get("uncommonType").Get("constructor")
+)
+
+func resetUncommonType(rt *rtype, xcount int, mcount int) *uncommonType {
+	ut := jsUncommonTyp.New()
+	v := js.InternalObject(ut).Get("_methods").Get("constructor")
+	ut.Set("xcount", xcount)
+	ut.Set("mcount", mcount)
+	ut.Set("_methods", js.Global.Call("$makeSlice", v, mcount, mcount))
+	ut.Set("jsType", jsType(rt))
+	js.InternalObject(rt).Set("uncommonType", ut)
+	return (*uncommonType)(unsafe.Pointer(ut.Unsafe()))
+}
+
 func newType(pkg string, name string, styp reflect.Type, xcount int, mcount int) (*rtype, []method) {
 	kind := styp.Kind()
 	var obj *js.Object
@@ -272,11 +290,7 @@ func newType(pkg string, name string, styp reflect.Type, xcount int, mcount int)
 	if kind == reflect.Func || kind == reflect.Interface {
 		return rt, nil
 	}
-	ut := toUncommonType(rt)
-	if ut == nil || xcount != 0 || mcount != 0 {
-		ut = newUncommonType(mcount, xcount)
-		setUncommonType(rt, ut)
-	}
+	ut := resetUncommonType(rt, xcount, mcount)
 	return rt, ut._methods
 }
 

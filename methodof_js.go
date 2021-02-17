@@ -83,46 +83,25 @@ func methodOf(styp reflect.Type, methods []reflect.Method) reflect.Type {
 			mcount++
 		}
 	}
-	_ = pcount
 	orgtyp := styp
 	rt, ums := newType(styp.PkgPath(), styp.Name(), styp, mcount, mcount)
 	setTypeName(rt, styp.PkgPath(), styp.Name())
-	typ := toType(rt)
 
-	//var index int
+	typ := toType(rt)
 	jstyp := jsType(rt)
 	jstyp.Set("methodSetCache", nil)
-	jsmscache := js.Global.Get("Array").New()
-	pjsmscache := js.Global.Get("Array").New()
-	//jstyp.Set("exported", true)
-	// jstyp.Set("named", true)
-	//jstyp.Set("string", styp.String())
-	// jstyp.Set("reflectType", js.Undefined)
-
 	jsms := jstyp.Get("methods")
-	//jsms := js.Global.Get("Array").New()
-	//jstyp.Set("methods", jsms)
 	jsproto := jstyp.Get("prototype")
+	jsmscache := js.Global.Get("Array").New()
 
-	// enable uncommonType ptrTo
-	pjstyp := js.Global.Call("$ptrType", jstyp)
-	pjstyp.Set("named", true)
-	//pjstyp.Set("exported", true)
-	//pjstyp.Set("string", "*reflectx.X")
-	// pjstyp.Set("reflectType", js.Undefined)
-
-	//jstyp.Set("string", "reflectx.T")
 	ptyp := reflect.PtrTo(typ)
 	prt := totype(ptyp)
-	//pjstyp := jsType(prt)
+	pums := resetUncommonType(prt, pcount, pcount)._methods
+	pjstyp := jsType(prt)
 	pjstyp.Set("methodSetCache", nil)
 	pjsms := pjstyp.Get("methods")
-	//pjsms := js.Global.Get("Array").New()
-	//pjstyp.Set("methods", pjsms)
 	pjsproto := pjstyp.Get("prototype")
-
-	ut := newUncommonType(pcount, pcount)
-	setUncommonType(prt, ut)
+	pjsmscache := js.Global.Get("Array").New()
 
 	index := -1
 	pindex := -1
@@ -167,8 +146,8 @@ func methodOf(styp reflect.Type, methods []reflect.Method) reflect.Type {
 
 		mname := resolveReflectName(newName(m.Name, "", true))
 		mtyp := resolveReflectType(totype(ntyp))
-		ut._methods[i].name = mname
-		ut._methods[i].mtyp = mtyp
+		pums[i].name = mname
+		pums[i].mtyp = mtyp
 		if !pointer {
 			ums[index].name = mname
 			ums[index].mtyp = mtyp
@@ -211,16 +190,7 @@ func methodOf(styp reflect.Type, methods []reflect.Method) reflect.Type {
 		}))
 	}
 	jstyp.Set("methodSetCache", jsmscache)
-	// jstyp.Set("reflectType", js.Undefined)
 	pjstyp.Set("methodSetCache", pjsmscache)
-	// pjstyp.Set("reflectType", js.Undefined)
-	//typ = toType(reflectType(jstyp))
-	// ptyp = reflect.PtrTo(typ)
-
-	// typ = toType(reflectType(jstyp))
-	// ptyp = toType(reflectType(pjstyp))
-	//typ2 := toType(reflectType(jstyp))
-	//log.Println("---->", jsmscache.Length(), typ2.NumMethod())
 
 	return typ
 }
