@@ -5,7 +5,6 @@ import (
 	"reflect"
 	"sort"
 	"strings"
-	"unsafe"
 )
 
 // MakeMethod make reflect.Method for MethodOf
@@ -211,7 +210,7 @@ func InterfaceOf(styp reflect.Type, embedded []reflect.Type, methods []reflect.M
 		return n < 0
 	})
 	rt, _ := newType(styp.PkgPath(), styp.Name(), styp, 0, 0)
-	st := (*interfaceType)(unsafe.Pointer(rt))
+	st := (*interfaceType)(getKindType(rt))
 	st.methods = nil
 	var lastname string
 	for _, m := range methods {

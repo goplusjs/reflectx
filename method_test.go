@@ -733,7 +733,7 @@ func checkInterface(t *testing.T, typ, styp reflect.Type) {
 	}
 }
 
-func _TestInterfaceOf(t *testing.T) {
+func TestInterfaceOf(t *testing.T) {
 	pkgpath := "github.com/goplus/reflectx"
 	typ := reflectx.NamedInterfaceOf(pkgpath, "Stringer", nil,
 		[]reflect.Method{
