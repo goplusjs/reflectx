@@ -12,25 +12,25 @@ import (
 // - pointer: flag receiver struct or pointer
 // - typ: method func type without receiver
 // - fn: func with receiver as first argument
-func MakeMethod(name string, pointer bool, typ reflect.Type, fn func(args []reflect.Value) (result []reflect.Value)) reflect.Method {
-	var in []reflect.Type
-	var out []reflect.Type
-	if pointer {
-		in = append(in, tyEmptyInterfacePtr)
-	} else {
-		in = append(in, tyEmptyInterface)
+func MakeMethod(name string, pointer bool, typ reflect.Type, fn func(args []reflect.Value) (result []reflect.Value)) Method {
+	return Method{
+		Name:    name,
+		Pointer: pointer,
+		Type:    typ,
+		Func:    fn,
 	}
-	for i := 0; i < typ.NumIn(); i++ {
-		in = append(in, typ.In(i))
-	}
-	for i := 0; i < typ.NumOut(); i++ {
-		out = append(out, typ.Out(i))
-	}
-	return reflect.Method{
-		Name: name,
-		Type: reflect.FuncOf(in, out, typ.IsVariadic()),
-		Func: reflect.MakeFunc(typ, fn),
-	}
+}
+
+// Method
+// - name: method name
+// - pointer: flag receiver struct or pointer
+// - typ: method func type without receiver
+// - fn: func with receiver as first argument
+type Method struct {
+	Name    string
+	Pointer bool
+	Type    reflect.Type
+	Func    func([]reflect.Value) []reflect.Value
 }
 
 func extraFieldMethod(ifield int, typ reflect.Type, skip map[string]bool) (methods []reflect.Method) {
@@ -157,7 +157,7 @@ func extractEmbedMethod(styp reflect.Type) []reflect.Method {
 	return ms
 }
 
-func MethodOf(styp reflect.Type, methods []reflect.Method) reflect.Type {
+func MethodOf(styp reflect.Type, methods []Method) reflect.Type {
 	chk := make(map[string]int)
 	for _, m := range methods {
 		chk[m.Name]++
@@ -165,15 +165,15 @@ func MethodOf(styp reflect.Type, methods []reflect.Method) reflect.Type {
 			panic(fmt.Sprintf("method redeclared: %v", m.Name))
 		}
 	}
-	if styp.Kind() == reflect.Struct {
-		ms := extractEmbedMethod(styp)
-		for _, m := range ms {
-			if chk[m.Name] == 1 {
-				continue
-			}
-			methods = append(methods, m)
-		}
-	}
+	// if styp.Kind() == reflect.Struct {
+	// 	ms := extractEmbedMethod(styp)
+	// 	for _, m := range ms {
+	// 		if chk[m.Name] == 1 {
+	// 			continue
+	// 		}
+	// 		methods = append(methods, m)
+	// 	}
+	// }
 	return methodOf(styp, methods)
 }
 
@@ -276,7 +276,7 @@ func toRealType(typ, orgtyp, mtyp reflect.Type) (in, out []reflect.Type, ntyp, i
 	}
 	var inFields []reflect.StructField
 	var outFields []reflect.StructField
-	for i := 1; i < mtyp.NumIn(); i++ {
+	for i := 0; i < mtyp.NumIn(); i++ {
 		t := fn(mtyp.In(i))
 		in = append(in, t)
 		inFields = append(inFields, reflect.StructField{

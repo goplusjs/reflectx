@@ -65,7 +65,7 @@ func jsFuncOf(in, out []reflect.Type, variadic bool) *js.Object {
 	return js.Global.Call("$funcType", jsIn, jsOut, variadic)
 }
 
-func methodOf(styp reflect.Type, methods []reflect.Method) reflect.Type {
+func methodOf(styp reflect.Type, methods []Method) reflect.Type {
 	sort.Slice(methods, func(i, j int) bool {
 		n := strings.Compare(methods[i].Name, methods[j].Name)
 		if n == 0 && methods[i].Type == methods[j].Type {
@@ -73,8 +73,8 @@ func methodOf(styp reflect.Type, methods []reflect.Method) reflect.Type {
 		}
 		return n < 0
 	})
-	isPointer := func(m reflect.Method) bool {
-		return m.Type.In(0).Kind() == reflect.Ptr
+	isPointer := func(m Method) bool {
+		return m.Pointer
 	}
 	var mcount, pcount int
 	pcount = len(methods)
@@ -107,36 +107,20 @@ func methodOf(styp reflect.Type, methods []reflect.Method) reflect.Type {
 	pindex := -1
 	for i, m := range methods {
 		in, out, ntyp, _, _ := toRealType(typ, orgtyp, m.Type)
-		pointer := isPointer(m)
 		var ftyp reflect.Type
-		if pointer {
+		if m.Pointer {
 			ftyp = reflect.FuncOf(append([]reflect.Type{ptyp}, in...), out, m.Type.IsVariadic())
 			pindex++
 		} else {
 			ftyp = reflect.FuncOf(append([]reflect.Type{typ}, in...), out, m.Type.IsVariadic())
 			index++
 		}
-		_ = ftyp
 		fn := js.Global.Get("Object").New()
 		fn.Set("pkg", "")
 		fn.Set("name", js.InternalObject(m.Name))
 		fn.Set("prop", js.InternalObject(m.Name))
 		fn.Set("typ", jsType(totype(ntyp)))
-		_in := []*rtype{rt}
-		_pin := []*rtype{prt}
-		_out := []*rtype{}
-		for _, t := range in {
-			_pin = append(_pin, totype(t))
-			_in = append(_in, totype(t))
-		}
-		for _, t := range out {
-			_out = append(_out, totype(t))
-		}
-		tfn := tovalue(&m.Func)
-		fnTyp := (*jsFuncType)(getKindType(tfn.typ))
-		fnTyp._in = _in[1:]
-		fnTyp._out = _out
-		if pointer {
+		if m.Pointer {
 			pjsms.SetIndex(pindex, fn)
 		} else {
 			jsms.SetIndex(index, fn)
@@ -148,40 +132,34 @@ func methodOf(styp reflect.Type, methods []reflect.Method) reflect.Type {
 		mtyp := resolveReflectType(totype(ntyp))
 		pums[i].name = mname
 		pums[i].mtyp = mtyp
-		if !pointer {
+		if !m.Pointer {
 			ums[index].name = mname
 			ums[index].mtyp = mtyp
 		}
-		// fnName := m.Name
-		pjsproto.Set(m.Name, js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
-			if pointer {
-				fnTyp._in = _pin
-			} else {
-				this = *(**js.Object)(unsafe.Pointer(this))
-				fnTyp._in = _in
-			}
-			fnTyp._out = _out
-			fnTyp.inCount++
-			defer func() {
-				fnTyp.inCount--
-				fnTyp._in = _in[1:]
-			}()
-			iargs := make([]interface{}, len(_in), len(_in))
-			iargs[0] = this
-			for i, arg := range args {
-				iargs[i+1] = arg
-			}
-			return js.InternalObject(tfn.ptr).Invoke(iargs...)
-		}))
+		dfn := reflect.MakeFunc(ftyp, m.Func)
+		tfn := tovalue(&dfn)
+		nargs := ftyp.NumIn()
+		if m.Pointer {
+			pjsproto.Set(m.Name, js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
+				iargs := make([]interface{}, nargs, nargs)
+				iargs[0] = this
+				for i, arg := range args {
+					iargs[i+1] = arg
+				}
+				return js.InternalObject(tfn.ptr).Invoke(iargs...)
+			}))
+		} else {
+			pjsproto.Set(m.Name, js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
+				iargs := make([]interface{}, nargs, nargs)
+				iargs[0] = *(**js.Object)(unsafe.Pointer(this))
+				for i, arg := range args {
+					iargs[i+1] = arg
+				}
+				return js.InternalObject(tfn.ptr).Invoke(iargs...)
+			}))
+		}
 		jsproto.Set(m.Name, js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
-			// log.Println("=======> js", fnName, len(args))
-			fnTyp._in = _in
-			fnTyp.inCount++
-			defer func() {
-				fnTyp.inCount--
-				fnTyp._in = _in[1:]
-			}()
-			iargs := make([]interface{}, len(_in), len(_in))
+			iargs := make([]interface{}, nargs, nargs)
 			iargs[0] = this.Get("$val")
 			for i, arg := range args {
 				iargs[i+1] = arg
