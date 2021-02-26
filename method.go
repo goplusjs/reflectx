@@ -181,12 +181,12 @@ func MakeEmptyInterface(pkgpath string, name string) reflect.Type {
 	return NamedTypeOf(pkgpath, name, tyEmptyInterface)
 }
 
-func NamedInterfaceOf(pkgpath string, name string, embedded []reflect.Type, methods []reflect.Method) reflect.Type {
+func NamedInterfaceOf(pkgpath string, name string, embedded []reflect.Type, methods []Method) reflect.Type {
 	styp := NamedTypeOf(pkgpath, name, tyEmptyInterface)
 	return InterfaceOf(styp, embedded, methods)
 }
 
-func InterfaceOf(styp reflect.Type, embedded []reflect.Type, methods []reflect.Method) reflect.Type {
+func InterfaceOf(styp reflect.Type, embedded []reflect.Type, methods []Method) reflect.Type {
 	if styp.Kind() != reflect.Interface {
 		panic(fmt.Errorf("non-interface %v", styp))
 	}
@@ -196,7 +196,7 @@ func InterfaceOf(styp reflect.Type, embedded []reflect.Type, methods []reflect.M
 		}
 		for i := 0; i < e.NumMethod(); i++ {
 			m := e.Method(i)
-			methods = append(methods, reflect.Method{
+			methods = append(methods, Method{
 				Name: m.Name,
 				Type: m.Type,
 			})
