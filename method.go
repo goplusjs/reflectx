@@ -33,13 +33,15 @@ type Method struct {
 	Func    func([]reflect.Value) []reflect.Value
 }
 
-func extraFieldMethod(ifield int, typ reflect.Type, skip map[string]bool) (methods []reflect.Method) {
+func extraFieldMethod(ifield int, typ reflect.Type, skip map[string]bool) (methods []Method) {
 	isPtr := typ.Kind() == reflect.Ptr
 	for i := 0; i < typ.NumMethod(); i++ {
 		m := MethodByIndex(typ, i)
 		if skip[m.Name] {
 			continue
 		}
+		in, out := parserFuncIO(m.Type)
+		mtyp := reflect.FuncOf(in[1:], out, m.Type.IsVariadic())
 		var fn func(args []reflect.Value) []reflect.Value
 		if isPtr {
 			fn = func(args []reflect.Value) []reflect.Value {
@@ -52,11 +54,11 @@ func extraFieldMethod(ifield int, typ reflect.Type, skip map[string]bool) (metho
 				return m.Func.Call(args)
 			}
 		}
-		methods = append(methods, reflect.Method{
+		methods = append(methods, Method{
 			Name:    m.Name,
-			PkgPath: m.PkgPath,
-			Type:    m.Type,
-			Func:    reflect.MakeFunc(m.Type, fn),
+			Pointer: in[0].Kind() == reflect.Ptr,
+			Type:    mtyp,
+			Func:    fn,
 		})
 	}
 	return
@@ -72,54 +74,44 @@ func parserFuncIO(typ reflect.Type) (in, out []reflect.Type) {
 	return
 }
 
-func extraPtrFieldMethod(ifield int, typ reflect.Type) (methods []reflect.Method) {
+func extraPtrFieldMethod(ifield int, typ reflect.Type) (methods []Method) {
 	for i := 0; i < typ.NumMethod(); i++ {
 		m := typ.Method(i)
 		in, out := parserFuncIO(m.Type)
-		in[0] = tyEmptyInterface
-		mtyp := reflect.FuncOf(in, out, m.Type.IsVariadic())
+		mtyp := reflect.FuncOf(in[1:], out, m.Type.IsVariadic())
 		imethod := i
-		methods = append(methods, reflect.Method{
-			Name:    m.Name,
-			PkgPath: m.PkgPath,
-			Type:    mtyp,
-			Func: reflect.MakeFunc(
-				mtyp,
-				func(args []reflect.Value) []reflect.Value {
-					var recv = args[0]
-					return recv.Field(ifield).Method(imethod).Call(args[1:])
-				},
-			),
+		methods = append(methods, Method{
+			Name: m.Name,
+			Type: mtyp,
+			Func: func(args []reflect.Value) []reflect.Value {
+				var recv = args[0]
+				return recv.Field(ifield).Method(imethod).Call(args[1:])
+			},
 		})
 	}
 	return
 }
 
-func extraInterfaceFieldMethod(ifield int, typ reflect.Type) (methods []reflect.Method) {
+func extraInterfaceFieldMethod(ifield int, typ reflect.Type) (methods []Method) {
 	for i := 0; i < typ.NumMethod(); i++ {
 		m := typ.Method(i)
 		in, out := parserFuncIO(m.Type)
-		in = append([]reflect.Type{tyEmptyInterface}, in...)
 		mtyp := reflect.FuncOf(in, out, m.Type.IsVariadic())
 		imethod := i
-		methods = append(methods, reflect.Method{
-			Name:    m.Name,
-			PkgPath: m.PkgPath,
-			Type:    mtyp,
-			Func: reflect.MakeFunc(
-				mtyp,
-				func(args []reflect.Value) []reflect.Value {
-					var recv = args[0]
-					return recv.Field(ifield).Method(imethod).Call(args[1:])
-				},
-			),
+		methods = append(methods, Method{
+			Name: m.Name,
+			Type: mtyp,
+			Func: func(args []reflect.Value) []reflect.Value {
+				var recv = args[0]
+				return recv.Field(ifield).Method(imethod).Call(args[1:])
+			},
 		})
 	}
 	return
 }
 
-func extractEmbedMethod(styp reflect.Type) []reflect.Method {
-	var methods []reflect.Method
+func extractEmbedMethod(styp reflect.Type) []Method {
+	var methods []Method
 	for i := 0; i < styp.NumField(); i++ {
 		sf := styp.Field(i)
 		if !sf.Anonymous {
@@ -148,7 +140,7 @@ func extractEmbedMethod(styp reflect.Type) []reflect.Method {
 	for _, m := range methods {
 		chk[m.Name]++
 	}
-	var ms []reflect.Method
+	var ms []Method
 	for _, m := range methods {
 		if chk[m.Name] == 1 {
 			ms = append(ms, m)
@@ -165,15 +157,15 @@ func MethodOf(styp reflect.Type, methods []Method) reflect.Type {
 			panic(fmt.Sprintf("method redeclared: %v", m.Name))
 		}
 	}
-	// if styp.Kind() == reflect.Struct {
-	// 	ms := extractEmbedMethod(styp)
-	// 	for _, m := range ms {
-	// 		if chk[m.Name] == 1 {
-	// 			continue
-	// 		}
-	// 		methods = append(methods, m)
-	// 	}
-	// }
+	if styp.Kind() == reflect.Struct {
+		ms := extractEmbedMethod(styp)
+		for _, m := range ms {
+			if chk[m.Name] == 1 {
+				continue
+			}
+			methods = append(methods, m)
+		}
+	}
 	return methodOf(styp, methods)
 }
 

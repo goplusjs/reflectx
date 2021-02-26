@@ -809,7 +809,7 @@ func makeDynamicSetterType() reflect.Type {
 	)
 }
 
-func _TestEmbedMethods1(t *testing.T) {
+func TestEmbedMethods1(t *testing.T) {
 	// MyPoint1
 	typ := reflect.TypeOf((*MyPoint1)(nil)).Elem()
 	if v := typ.NumMethod(); v != 4 {
@@ -827,6 +827,7 @@ func _TestEmbedMethods1(t *testing.T) {
 			},
 		}
 		typ := reflectx.NamedStructOf("main", "MyPoint1", fs)
+		typ = reflectx.MethodOf(typ, nil)
 		if v := typ.NumMethod(); v != 4 {
 			t.Errorf("NumMethod have %v want 4", v)
 		}
@@ -856,7 +857,7 @@ func _TestEmbedMethods1(t *testing.T) {
 	fnTest(t, makeDynamicPointType())
 }
 
-func _TestEmbedMethods2(t *testing.T) {
+func TestEmbedMethods2(t *testing.T) {
 	// MyPoint2
 	typ := reflect.TypeOf((*MyPoint2)(nil)).Elem()
 	if v := typ.NumMethod(); v != 5 {
@@ -876,6 +877,7 @@ func _TestEmbedMethods2(t *testing.T) {
 			},
 		}
 		typ = reflectx.NamedStructOf("main", "MyPoint2", fs)
+		typ = reflectx.MethodOf(typ, nil)
 		if v := typ.NumMethod(); v != 5 {
 			t.Errorf("NumMethod have %v want 5", v)
 		}
@@ -915,7 +917,7 @@ func _TestEmbedMethods2(t *testing.T) {
 	fnTest(t, makeDynamicPointType())
 }
 
-func _TestEmbedMethods3(t *testing.T) {
+func TestEmbedMethods3(t *testing.T) {
 	// MyPoint3
 	typ := reflect.TypeOf((*MyPoint3)(nil)).Elem()
 	if v := typ.NumMethod(); v != 2 {
@@ -945,6 +947,7 @@ func _TestEmbedMethods3(t *testing.T) {
 			},
 		}
 		typ := reflectx.NamedStructOf("main", "MyPoint3", fs)
+		typ = reflectx.MethodOf(typ, nil)
 		if v := typ.NumMethod(); v != 2 {
 			t.Errorf("NumMethod have %v want 2", v)
 		}
@@ -970,7 +973,7 @@ func _TestEmbedMethods3(t *testing.T) {
 	fnTest(t, makeDynamicSetterType(), makeDynamicPointType())
 }
 
-func _TestEmbedMethods4(t *testing.T) {
+func TestEmbedMethods4(t *testing.T) {
 	// MyPoint4
 	typ := reflect.TypeOf((*MyPoint4)(nil)).Elem()
 	if v := typ.NumMethod(); v != 6 {
