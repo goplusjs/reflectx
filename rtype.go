@@ -11,6 +11,10 @@ func toStructType(t *rtype) *structType {
 	return (*structType)(unsafe.Pointer(t))
 }
 
+func toKindType(t *rtype) unsafe.Pointer {
+	return unsafe.Pointer(t)
+}
+
 func toUncommonType(t *rtype) *uncommonType {
 	if t.tflag&tflagUncommon == 0 {
 		return nil
@@ -211,7 +215,7 @@ type funcType struct {
 	outCount uint16 // top bit is set if last input parameter is ...
 }
 
-func newType(styp reflect.Type, mcount int, xcount int) (*rtype, []method) {
+func newType(pkg string, name string, styp reflect.Type, mcount int, xcount int) (*rtype, []method) {
 	var tt reflect.Value
 	var rt *rtype
 	ort := totype(styp)
@@ -340,15 +344,10 @@ func newType(styp reflect.Type, mcount int, xcount int) (*rtype, []method) {
 }
 
 func NamedTypeOf(pkgpath string, name string, from reflect.Type) reflect.Type {
-	rt, _ := newType(from, 0, 0)
+	rt, _ := newType(pkgpath, name, from, 0, 0)
 	setTypeName(rt, pkgpath, name)
 	typ := toType(rt)
-	kind := TkType
-	if typ.Kind() == reflect.Struct {
-		typ = MethodOf(typ, nil)
-		kind |= TkMethod
-	}
-	ntypeMap[typ] = &Named{Name: name, PkgPath: pkgpath, Type: typ, From: from, Kind: kind}
+	ntypeMap[typ] = &Named{Name: name, PkgPath: pkgpath, Type: typ, From: from, Kind: TkType}
 	return typ
 }
 

@@ -3,7 +3,6 @@
 package reflectx
 
 import (
-	"fmt"
 	"reflect"
 	"unsafe"
 
@@ -21,6 +20,9 @@ func newNameOff(n name) nameOff
 
 //go:linkname newTypeOff reflect.newTypeOff
 func newTypeOff(rt *rtype) typeOff
+
+//go:linkname makeValue reflect.makeValue
+func makeValue(t *rtype, v *js.Object, fl flag) reflect.Value
 
 // func jsType(typ Type) *js.Object {
 // 	return js.InternalObject(typ).Get("jsType")
@@ -42,12 +44,15 @@ func toKindType(t *rtype) unsafe.Pointer {
 func toUncommonType(t *rtype) *uncommonType {
 	kind := js.InternalObject(t).Get("uncommonType")
 	if kind == js.Undefined {
-		ut := &uncommonType{}
-		js.InternalObject(t).Set("uncommonType", js.InternalObject(ut))
-		js.InternalObject(ut).Set("rtype", js.InternalObject(t))
-		return ut
+		return nil
 	}
 	return (*uncommonType)(unsafe.Pointer(kind.Unsafe()))
+}
+
+func setUncommonType(t *rtype, u *uncommonType) {
+	t.tflag |= tflagUncommon
+	js.InternalObject(t).Set("uncommonType", js.InternalObject(u))
+	js.InternalObject(u).Set("jsType", jsType(t))
 }
 
 type uncommonType struct {
@@ -57,6 +62,29 @@ type uncommonType struct {
 	moff    uint32
 
 	_methods []method
+}
+
+func (t *uncommonType) exportedMethods() []method {
+	if t.xcount == 0 {
+		return nil
+	}
+	return t._methods[:t.xcount:t.xcount]
+}
+
+func (t *rtype) ptrTo() *rtype {
+	return reflectType(js.Global.Call("$ptrType", jsType(t)))
+}
+
+func (t *rtype) uncommon() *uncommonType {
+	return toUncommonType(t)
+}
+
+func (t *rtype) exportedMethods() []method {
+	ut := t.uncommon()
+	if ut == nil {
+		return nil
+	}
+	return ut.exportedMethods()
 }
 
 /*
@@ -148,7 +176,7 @@ var (
 		4,    // uintptr
 		4, 8, // float
 		8, 16, // complex
-		4, //
+		4, // array
 		4, //
 		4,
 		4,
@@ -161,178 +189,100 @@ var (
 	}
 )
 
-func getKindType(rt *rtype) unsafe.Pointer {
-	return (unsafe.Pointer)(js.InternalObject(rt).Get("kindType").Unsafe())
-}
-
 func tovalue(v *reflect.Value) *Value {
 	return (*Value)(unsafe.Pointer(v))
 }
 
-var (
-	index int
-)
-
-func unusedName() string {
-	index++
-	return fmt.Sprintf("Gop_unused_%v", index)
-}
-
-func emptyType() reflect.Type {
-	typ := reflect.StructOf([]reflect.StructField{
-		reflect.StructField{
-			Name: unusedName(),
-			Type: tyEmptyStruct,
-		}})
-	rt := totype(typ)
-	st := toStructType(rt)
-	st.fields = st.fields[:len(st.fields)-1]
-	st.str = resolveReflectName(newName("unused", "", false))
-	return typ
-}
-
-func hashName(pkgpath string, name string) string {
-	return fmt.Sprintf("Gop_Named_%d_%d", fnv1(0, pkgpath), fnv1(0, name))
-}
-
-func NamedTypeOf(pkgpath string, name string, from reflect.Type) (typ reflect.Type) {
-	rt, _ := newType(from, 0, 0)
-	setTypeName(rt, pkgpath, name)
+func NamedTypeOf(pkg string, name string, from reflect.Type) (typ reflect.Type) {
+	rt, _ := newType(pkg, name, from, 0, 0)
+	setTypeName(rt, pkg, name)
 	typ = toType(rt)
-	nt := &Named{Name: name, PkgPath: pkgpath, Type: typ, From: from, Kind: TkType}
+	nt := &Named{Name: name, PkgPath: pkg, Type: typ, From: from, Kind: TkType}
 	ntypeMap[typ] = nt
 	return
 }
 
-func newType(styp reflect.Type, xcount int, mcount int) (*rtype, []method) {
-	var rt *rtype
-	var typ reflect.Type
+type mtemp struct {
+}
+
+func (*mtemp) test() {
+}
+
+var (
+	jsUncommonTyp = js.InternalObject(reflect.TypeOf((*mtemp)(nil))).Get("uncommonType").Get("constructor")
+)
+
+func resetUncommonType(rt *rtype, xcount int, mcount int) *uncommonType {
+	ut := jsUncommonTyp.New()
+	v := js.InternalObject(ut).Get("_methods").Get("constructor")
+	ut.Set("xcount", xcount)
+	ut.Set("mcount", mcount)
+	ut.Set("_methods", js.Global.Call("$makeSlice", v, mcount, mcount))
+	ut.Set("jsType", jsType(rt))
+	js.InternalObject(rt).Set("uncommonType", ut)
+	return (*uncommonType)(unsafe.Pointer(ut.Unsafe()))
+}
+
+func newType(pkg string, name string, styp reflect.Type, xcount int, mcount int) (*rtype, []method) {
 	kind := styp.Kind()
+	var obj *js.Object
 	switch kind {
 	default:
-		obj := fnNewType.Invoke(sizes[kind], kind, "", true, "", false, nil)
-		rt = reflectType(obj)
+		obj = fnNewType.Invoke(styp.Size(), kind, name, true, pkg, false, nil)
 	case reflect.Array:
-		elem := NamedTypeOf("", "_", styp.Elem())
-		typ = reflect.ArrayOf(styp.Len(), elem)
-		rt = totype(typ)
-		src := totype(styp)
-		copyType(rt, src)
-		d := (*arrayType)(getKindType(rt))
-		s := (*arrayType)(getKindType(src))
-		d.elem = s.elem
-		d.slice = s.slice
-		d.len = s.len
+		obj = fnNewType.Invoke(styp.Size(), kind, name, true, pkg, false, nil)
+		obj.Call("init", jsType(styp.Elem()), styp.Len())
 	case reflect.Slice:
-		elem := NamedTypeOf("", "_", styp.Elem())
-		typ = reflect.SliceOf(elem)
-		rt = totype(typ)
-		dst := totype(typ)
-		src := totype(styp)
-		copyType(dst, src)
-		d := (*sliceType)(getKindType(dst))
-		s := (*sliceType)(getKindType(src))
-		d.elem = s.elem
+		obj = fnNewType.Invoke(styp.Size(), kind, name, true, pkg, false, nil)
+		obj.Call("init", jsType(styp.Elem()))
 	case reflect.Map:
-		key := NamedTypeOf("", "_", styp.Key())
-		elem := NamedTypeOf("", "_", styp.Elem())
-		typ = reflect.MapOf(key, elem)
-		rt = totype(typ)
-		src := totype(styp)
-		copyType(rt, src)
-		d := (*mapType)(getKindType(rt))
-		s := (*mapType)(getKindType(src))
-		d.key = s.key
-		d.elem = s.elem
-		d.bucket = s.bucket
-		d.hasher = s.hasher
-		d.keysize = s.keysize
-		d.valuesize = s.valuesize
-		d.bucketsize = s.bucketsize
-		d.flags = s.flags
+		obj = fnNewType.Invoke(styp.Size(), kind, name, true, pkg, false, nil)
+		obj.Call("init", jsType(styp.Key()), jsType(styp.Elem()))
 	case reflect.Ptr:
-		elem := NamedTypeOf("", "_", styp.Elem())
-		typ = reflect.PtrTo(elem)
-		rt = totype(typ)
-		src := totype(styp)
-		copyType(rt, src)
-		d := (*ptrType)(getKindType(rt))
-		s := (*ptrType)(getKindType(src))
-		d.elem = s.elem
+		obj = fnNewType.Invoke(styp.Size(), kind, name, true, pkg, false, nil)
+		obj.Call("init", jsType(styp.Elem()))
 	case reflect.Chan:
-		elem := NamedTypeOf("", "_", styp.Elem())
-		typ = reflect.ChanOf(styp.ChanDir(), elem)
-		rt = totype(typ)
-		src := totype(styp)
-		copyType(rt, src)
-		d := (*chanType)(getKindType(rt))
-		s := (*chanType)(getKindType(src))
-		d.elem = s.elem
-		d.dir = s.dir
+		obj = fnNewType.Invoke(styp.Size(), kind, name, true, pkg, false, nil)
+		obj.Call("init", jsType(styp.Elem()))
 	case reflect.Func:
-		numIn := styp.NumIn()
-		in := make([]reflect.Type, numIn, numIn)
-		for i := 0; i < numIn; i++ {
-			in[i] = styp.In(i)
-		}
-		numOut := styp.NumOut()
-		out := make([]reflect.Type, numOut, numOut)
-		for i := 0; i < numOut; i++ {
-			out[i] = styp.Out(i)
-		}
-		out = append(out, emptyType())
-		typ = reflect.FuncOf(in, out, styp.IsVariadic())
-		rt = totype(typ)
-		src := totype(styp)
-		d := (*jsFuncType)(getKindType(rt))
-		s := (*jsFuncType)(getKindType(src))
-		d.inCount = s.inCount
-		d.outCount = s.outCount
-		d._in = s._in
-		d._out = s._out
+		obj = fnNewType.Invoke(styp.Size(), kind, name, true, pkg, false, nil)
+		obj.Call("init", jsType(styp).Get("params"), jsType(styp).Get("results"), styp.IsVariadic())
 	case reflect.Interface:
-		t := fnNewType.Invoke(styp.Size(), kind, "", true, "", false, nil)
-		rt = reflectType(t)
-		typ = toType(rt)
-		src := totype(styp)
-		copyType(rt, src)
-		d := (*interfaceType)(getKindType(rt))
-		s := (*interfaceType)(getKindType(src))
-		for _, m := range s.methods {
-			d.methods = append(d.methods, imethod{
-				name: resolveReflectName(s.nameOff(m.name)),
-				typ:  resolveReflectType(s.typeOff(m.typ)),
-			})
-		}
+		obj = fnNewType.Invoke(styp.Size(), kind, name, true, pkg, false, nil)
+		obj.Call("init", jsType(styp).Get("methods"))
 	case reflect.Struct:
-		var fields []reflect.StructField
-		if styp.Kind() == reflect.Struct {
-			for i := 0; i < styp.NumField(); i++ {
-				fs := styp.Field(i)
-				if !isExported(fs.Name) {
-					fs.PkgPath = "main"
-				}
-				fields = append(fields, fs)
-			}
+		fields := js.Global.Get("Array").New()
+		for i := 0; i < styp.NumField(); i++ {
+			sf := styp.Field(i)
+			jsf := js.Global.Get("Object").New()
+			jsf.Set("prop", sf.Name)
+			jsf.Set("name", sf.Name)
+			jsf.Set("exported", true)
+			jsf.Set("typ", jsType(sf.Type))
+			jsf.Set("tag", sf.Tag)
+			jsf.Set("embedded", sf.Anonymous)
+			fields.SetIndex(i, jsf)
 		}
-		fields = append(fields, reflect.StructField{
-			Name: unusedName(),
-			Type: tyEmptyStruct,
+		fn := js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
+			this.Set("$val", this)
+			for i := 0; i < fields.Length(); i++ {
+				f := fields.Index(i)
+				if len(args) > i && args[i] != js.Undefined {
+					this.Set(f.Get("prop").String(), args[i])
+				} else {
+					this.Set(f.Get("prop").String(), f.Get("typ").Call("zero"))
+				}
+			}
+			return nil
 		})
-		typ = StructOf(fields)
-		rt = totype(typ)
-		st := toStructType(rt)
-		st.fields = st.fields[:len(st.fields)-1]
-		copyType(rt, totype(styp))
+		obj = fnNewType.Invoke(styp.Size(), kind, styp.Name(), false, pkg, false, fn)
+		obj.Call("init", pkg, fields)
 	}
-	ut := toUncommonType(rt)
-	ut.mcount = uint16(mcount)
-	ut.xcount = uint16(xcount)
-	ut.moff = uint32(unsafe.Sizeof(uncommonType{}))
-	ut._methods = make([]method, mcount, mcount)
+	rt := reflectType(obj)
 	if kind == reflect.Func || kind == reflect.Interface {
 		return rt, nil
 	}
+	ut := resetUncommonType(rt, xcount, mcount)
 	return rt, ut._methods
 }
 
@@ -399,6 +349,35 @@ func (t *funcType) out() []*rtype {
 	return t._out
 }
 
-func Interface(v reflect.Value) interface{} {
-	return v.Interface()
+func jsType(typ interface{}) *js.Object {
+	return js.InternalObject(typ).Get("jsType")
 }
+
+// func (v Value) object() *js.Object {
+// 	if v.typ.Kind() == reflect.Array || v.typ.Kind() == reflect.Struct {
+// 		return js.InternalObject(v.ptr)
+// 	}
+// 	if v.flag&flagIndir != 0 {
+// 		val := js.InternalObject(v.ptr).Call("$get")
+// 		if val != js.Global.Get("$ifaceNil") && val.Get("constructor") != jsType(v.typ) {
+// 			switch v.typ.Kind() {
+// 			case reflect.Uint64, reflect.Int64:
+// 				val = jsType(v.typ).New(val.Get("$high"), val.Get("$low"))
+// 			case reflect.Complex64, reflect.Complex128:
+// 				val = jsType(v.typ).New(val.Get("$real"), val.Get("$imag"))
+// 			case reflect.Slice:
+// 				if val == val.Get("constructor").Get("nil") {
+// 					val = jsType(v.typ).Get("nil")
+// 					break
+// 				}
+// 				newVal := jsType(v.typ).New(val.Get("$array"))
+// 				newVal.Set("$offset", val.Get("$offset"))
+// 				newVal.Set("$length", val.Get("$length"))
+// 				newVal.Set("$capacity", val.Get("$capacity"))
+// 				val = newVal
+// 			}
+// 		}
+// 		return js.InternalObject(val.Unsafe())
+// 	}
+// 	return js.InternalObject(v.ptr)
+// }
