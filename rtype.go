@@ -11,6 +11,10 @@ func toStructType(t *rtype) *structType {
 	return (*structType)(unsafe.Pointer(t))
 }
 
+func toKindType(t *rtype) unsafe.Pointer {
+	return unsafe.Pointer(t)
+}
+
 func toUncommonType(t *rtype) *uncommonType {
 	if t.tflag&tflagUncommon == 0 {
 		return nil

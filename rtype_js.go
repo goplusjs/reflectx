@@ -189,17 +189,9 @@ var (
 	}
 )
 
-func getKindType(rt *rtype) unsafe.Pointer {
-	return (unsafe.Pointer)(js.InternalObject(rt).Get("kindType").Unsafe())
-}
-
 func tovalue(v *reflect.Value) *Value {
 	return (*Value)(unsafe.Pointer(v))
 }
-
-var (
-	index int
-)
 
 func NamedTypeOf(pkg string, name string, from reflect.Type) (typ reflect.Type) {
 	rt, _ := newType(pkg, name, from, 0, 0)

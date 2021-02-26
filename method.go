@@ -210,7 +210,7 @@ func InterfaceOf(styp reflect.Type, embedded []reflect.Type, methods []Method) r
 		return n < 0
 	})
 	rt, _ := newType(styp.PkgPath(), styp.Name(), styp, 0, 0)
-	st := (*interfaceType)(getKindType(rt))
+	st := (*interfaceType)(toKindType(rt))
 	st.methods = nil
 	var lastname string
 	for _, m := range methods {

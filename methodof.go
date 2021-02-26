@@ -81,7 +81,7 @@ func New(typ reflect.Type) reflect.Value {
 	return v
 }
 
-func methodOf(styp reflect.Type, methods []reflect.Method) reflect.Type {
+func methodOf(styp reflect.Type, methods []Method) reflect.Type {
 	sort.Slice(methods, func(i, j int) bool {
 		n := strings.Compare(methods[i].Name, methods[j].Name)
 		if n == 0 && methods[i].Type == methods[j].Type {
@@ -89,14 +89,11 @@ func methodOf(styp reflect.Type, methods []reflect.Method) reflect.Type {
 		}
 		return n < 0
 	})
-	isPointer := func(m reflect.Method) bool {
-		return m.Type.In(0).Kind() == reflect.Ptr
-	}
 	var mcount, pcount int
 	pcount = len(methods)
 	var mlist []string
 	for _, m := range methods {
-		if !isPointer(m) {
+		if !m.Pointer {
 			mlist = append(mlist, m.Name)
 			mcount++
 		}
@@ -116,20 +113,19 @@ func methodOf(styp reflect.Type, methods []reflect.Method) reflect.Type {
 	var pinfos []*methodInfo
 	var index int
 	for i, m := range methods {
-		ptr := tovalue(&m.Func).ptr
 		name := resolveReflectName(newName(m.Name, "", true))
 		in, out, ntyp, inTyp, outTyp := toRealType(typ, orgtyp, m.Type)
 		mtyp := resolveReflectType(totype(ntyp))
-		pointer := isPointer(m)
 		var ftyp reflect.Type
-		if pointer {
+		if m.Pointer {
 			ftyp = reflect.FuncOf(append([]reflect.Type{ptyp}, in...), out, m.Type.IsVariadic())
 		} else {
 			ftyp = reflect.FuncOf(append([]reflect.Type{typ}, in...), out, m.Type.IsVariadic())
 		}
 
-		funcImpl := (*makeFuncImpl)(tovalue(&m.Func).ptr)
-		funcImpl.ftyp = (*funcType)(unsafe.Pointer(totype(ftyp)))
+		mfn := reflect.MakeFunc(ftyp, m.Func)
+		ptr := tovalue(&mfn).ptr
+
 		sz := int(inTyp.Size())
 		ifunc := icall(i, true)
 		var pifn, tfn, ptfn textOff
@@ -140,7 +136,7 @@ func methodOf(styp reflect.Type, methods []reflect.Method) reflect.Type {
 		}
 		tfn = resolveReflectText(unsafe.Pointer(ptr))
 		pindex := i
-		if !pointer {
+		if !m.Pointer {
 			for i, s := range mlist {
 				if s == m.Name {
 					pindex = i
@@ -169,10 +165,10 @@ func methodOf(styp reflect.Type, methods []reflect.Method) reflect.Type {
 			index:    pindex,
 			isz:      isz,
 			osz:      osz,
-			pointer:  pointer,
+			pointer:  m.Pointer,
 			variadic: m.Type.IsVariadic(),
 		})
-		if !pointer {
+		if !m.Pointer {
 			ifunc := icall(index, false)
 			var ifn textOff
 			if ifunc == nil {
@@ -191,7 +187,7 @@ func methodOf(styp reflect.Type, methods []reflect.Method) reflect.Type {
 				index:    index,
 				isz:      isz,
 				osz:      osz,
-				pointer:  pointer,
+				pointer:  m.Pointer,
 				variadic: m.Type.IsVariadic(),
 			})
 			index++
