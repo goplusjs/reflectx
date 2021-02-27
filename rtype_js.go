@@ -49,12 +49,6 @@ func toUncommonType(t *rtype) *uncommonType {
 	return (*uncommonType)(unsafe.Pointer(kind.Unsafe()))
 }
 
-func setUncommonType(t *rtype, u *uncommonType) {
-	t.tflag |= tflagUncommon
-	js.InternalObject(t).Set("uncommonType", js.InternalObject(u))
-	js.InternalObject(u).Set("jsType", jsType(t))
-}
-
 type uncommonType struct {
 	pkgPath nameOff
 	mcount  uint16
