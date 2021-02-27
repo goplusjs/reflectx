@@ -202,14 +202,8 @@ func NamedTypeOf(pkg string, name string, from reflect.Type) (typ reflect.Type) 
 	return
 }
 
-type mtemp struct {
-}
-
-func (*mtemp) test() {
-}
-
 var (
-	jsUncommonTyp = js.InternalObject(reflect.TypeOf((*mtemp)(nil))).Get("uncommonType").Get("constructor")
+	jsUncommonTyp = js.InternalObject(reflect.TypeOf((*rtype)(nil))).Get("uncommonType").Get("constructor")
 )
 
 func resetUncommonType(rt *rtype, xcount int, mcount int) *uncommonType {
@@ -282,6 +276,7 @@ func newType(pkg string, name string, styp reflect.Type, xcount int, mcount int)
 	if kind == reflect.Func || kind == reflect.Interface {
 		return rt, nil
 	}
+	rt.tflag |= tflagUncommon
 	ut := resetUncommonType(rt, xcount, mcount)
 	return rt, ut._methods
 }
@@ -292,45 +287,11 @@ func totype(typ reflect.Type) *rtype {
 	return rt
 }
 
-type jsFuncType struct {
-	rtype    `reflect:"func"`
-	inCount  uint16
-	outCount uint16
-
-	_in  []*rtype
-	_out []*rtype
-}
-
-type makeFuncImpl struct {
-	code   uintptr
-	stack  *bitVector // ptrmap for both args and results
-	argLen uintptr    // just args
-	ftyp   *funcType
-	fn     func([]reflect.Value) []reflect.Value
-}
-
-type bitVector struct {
-	n    uint32 // number of bits
-	data []byte
-}
-
 func internalStr(strObj *js.Object) string {
 	var c struct{ str string }
 	js.InternalObject(c).Set("str", strObj) // get string without internalizing
 	return c.str
 }
-
-// func isWrapped(typ Type) bool {
-// 	return jsType(typ).Get("wrapped").Bool()
-// }
-
-// func copyStruct(dst, src *js.Object, typ Type) {
-// 	fields := jsType(typ).Get("fields")
-// 	for i := 0; i < fields.Length(); i++ {
-// 		prop := fields.Index(i).Get("prop").String()
-// 		dst.Set(prop, src.Get(prop))
-// 	}
-// }
 
 type funcType struct {
 	rtype    `reflect:"func"`
@@ -352,32 +313,3 @@ func (t *funcType) out() []*rtype {
 func jsType(typ interface{}) *js.Object {
 	return js.InternalObject(typ).Get("jsType")
 }
-
-// func (v Value) object() *js.Object {
-// 	if v.typ.Kind() == reflect.Array || v.typ.Kind() == reflect.Struct {
-// 		return js.InternalObject(v.ptr)
-// 	}
-// 	if v.flag&flagIndir != 0 {
-// 		val := js.InternalObject(v.ptr).Call("$get")
-// 		if val != js.Global.Get("$ifaceNil") && val.Get("constructor") != jsType(v.typ) {
-// 			switch v.typ.Kind() {
-// 			case reflect.Uint64, reflect.Int64:
-// 				val = jsType(v.typ).New(val.Get("$high"), val.Get("$low"))
-// 			case reflect.Complex64, reflect.Complex128:
-// 				val = jsType(v.typ).New(val.Get("$real"), val.Get("$imag"))
-// 			case reflect.Slice:
-// 				if val == val.Get("constructor").Get("nil") {
-// 					val = jsType(v.typ).Get("nil")
-// 					break
-// 				}
-// 				newVal := jsType(v.typ).New(val.Get("$array"))
-// 				newVal.Set("$offset", val.Get("$offset"))
-// 				newVal.Set("$length", val.Get("$length"))
-// 				newVal.Set("$capacity", val.Get("$capacity"))
-// 				val = newVal
-// 			}
-// 		}
-// 		return js.InternalObject(val.Unsafe())
-// 	}
-// 	return js.InternalObject(v.ptr)
-// }

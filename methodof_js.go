@@ -20,16 +20,22 @@ func Interface(v reflect.Value) interface{} {
 	return v.Interface()
 }
 
+func isMethod(typ reflect.Type) bool {
+	return typMethodMap[typ]
+}
+
 func MethodByIndex(typ reflect.Type, index int) reflect.Method {
 	m := typ.Method(index)
-	m.Func = reflect.MakeFunc(m.Type, func(args []reflect.Value) []reflect.Value {
-		recv := args[0].MethodByName(m.Name)
-		if m.Type.IsVariadic() {
-			return recv.CallSlice(args[1:])
-		} else {
-			return recv.Call(args[1:])
-		}
-	})
+	if isMethod(typ) {
+		m.Func = reflect.MakeFunc(m.Type, func(args []reflect.Value) []reflect.Value {
+			recv := args[0].MethodByName(m.Name)
+			if m.Type.IsVariadic() {
+				return recv.CallSlice(args[1:])
+			} else {
+				return recv.Call(args[1:])
+			}
+		})
+	}
 	return m
 }
 
@@ -38,32 +44,22 @@ func MethodByName(typ reflect.Type, name string) (m reflect.Method, ok bool) {
 	if !ok {
 		return
 	}
-	m.Func = reflect.MakeFunc(m.Type, func(args []reflect.Value) []reflect.Value {
-		recv := args[0].MethodByName(name)
-		if m.Type.IsVariadic() {
-			return recv.CallSlice(args[1:])
-		} else {
-			return recv.Call(args[1:])
-		}
-	})
+	if isMethod(typ) {
+		m.Func = reflect.MakeFunc(m.Type, func(args []reflect.Value) []reflect.Value {
+			recv := args[0].MethodByName(name)
+			if m.Type.IsVariadic() {
+				return recv.CallSlice(args[1:])
+			} else {
+				return recv.Call(args[1:])
+			}
+		})
+	}
 	return
 }
 
-func jsFuncOf(in, out []reflect.Type, variadic bool) *js.Object {
-	if variadic && (len(in) == 0 || in[len(in)-1].Kind() != reflect.Slice) {
-		panic("reflect.FuncOf: last arg of variadic func must be slice")
-	}
-
-	jsIn := make([]*js.Object, len(in))
-	for i, v := range in {
-		jsIn[i] = jsType(totype(v))
-	}
-	jsOut := make([]*js.Object, len(out))
-	for i, v := range out {
-		jsOut[i] = jsType(totype(v))
-	}
-	return js.Global.Call("$funcType", jsIn, jsOut, variadic)
-}
+var (
+	typMethodMap = make(map[reflect.Type]bool)
+)
 
 func methodOf(styp reflect.Type, methods []Method) reflect.Type {
 	sort.Slice(methods, func(i, j int) bool {
@@ -170,5 +166,6 @@ func methodOf(styp reflect.Type, methods []Method) reflect.Type {
 	jstyp.Set("methodSetCache", jsmscache)
 	pjstyp.Set("methodSetCache", pjsmscache)
 
+	typMethodMap[typ] = true
 	return typ
 }
