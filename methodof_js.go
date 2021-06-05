@@ -82,6 +82,19 @@ func newMethodSet(styp reflect.Type, maxmfunc, maxpfunc int) reflect.Type {
 	return typ
 }
 
+func resizeMethod(typ reflect.Type, count int) error {
+	rt := totype(typ)
+	ut := toUncommonType(rt)
+	if ut == nil {
+		return fmt.Errorf("not found uncommonType of %v", typ)
+	}
+	if uint16(count) > ut.mcount {
+		return fmt.Errorf("too many methods of %v", typ)
+	}
+	ut.xcount = uint16(count)
+	return nil
+}
+
 func setMethodSet(typ reflect.Type, methods []Method) error {
 	sort.Slice(methods, func(i, j int) bool {
 		n := strings.Compare(methods[i].Name, methods[j].Name)
@@ -101,8 +114,17 @@ func setMethodSet(typ reflect.Type, methods []Method) error {
 		}
 	}
 
+	ptyp := reflect.PtrTo(typ)
+	if err := resizeMethod(typ, mcount); err != nil {
+		return err
+	}
+	if err := resizeMethod(ptyp, pcount); err != nil {
+		return err
+	}
 	rt := totype(typ)
-	ums := resetUncommonType(rt, mcount, mcount)._methods
+	prt := totype(ptyp)
+
+	ums := toUncommonType(rt)._methods
 
 	jstyp := jsType(rt)
 	jstyp.Set("methodSetCache", nil)
@@ -110,9 +132,7 @@ func setMethodSet(typ reflect.Type, methods []Method) error {
 	jsproto := jstyp.Get("prototype")
 	jsmscache := js.Global.Get("Array").New()
 
-	ptyp := reflect.PtrTo(typ)
-	prt := totype(ptyp)
-	pums := resetUncommonType(prt, pcount, pcount)._methods
+	pums := toUncommonType(prt)._methods
 	pjstyp := jsType(prt)
 	pjstyp.Set("methodSetCache", nil)
 	pjsms := pjstyp.Get("methods")

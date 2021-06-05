@@ -200,7 +200,7 @@ var (
 	jsUncommonTyp = js.InternalObject(reflect.TypeOf((*_rtype)(nil))).Get("uncommonType").Get("constructor")
 )
 
-func resetUncommonType(rt *_rtype, xcount int, mcount int) *uncommonType {
+func resetUncommonType(rt *_rtype, mcount int, xcount int) *uncommonType {
 	ut := jsUncommonTyp.New()
 	v := js.InternalObject(ut).Get("_methods").Get("constructor")
 	ut.Set("xcount", xcount)
