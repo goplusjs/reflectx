@@ -10,19 +10,19 @@ import (
 )
 
 //go:linkname reflectType reflect.reflectType
-func reflectType(typ *js.Object) *rtype
+func reflectType(typ *js.Object) *_rtype
 
 //go:linkname setKindType reflect.setKindType
-func setKindType(rt *rtype, kindType interface{})
+func setKindType(rt *_rtype, kindType interface{})
 
 //go:linkname newNameOff reflect.newNameOff
 func newNameOff(n name) nameOff
 
 //go:linkname newTypeOff reflect.newTypeOff
-func newTypeOff(rt *rtype) typeOff
+func newTypeOff(rt *_rtype) typeOff
 
 //go:linkname makeValue reflect.makeValue
-func makeValue(t *rtype, v *js.Object, fl flag) reflect.Value
+func makeValue(t *_rtype, v *js.Object, fl flag) reflect.Value
 
 // func jsType(typ Type) *js.Object {
 // 	return js.InternalObject(typ).Get("jsType")
@@ -32,16 +32,16 @@ func makeValue(t *rtype, v *js.Object, fl flag) reflect.Value
 // 	return _reflectType(typ, internalStr)
 // }
 
-func toStructType(t *rtype) *structType {
+func toStructType(t *_rtype) *structType {
 	kind := js.InternalObject(t).Get("kindType")
 	return (*structType)(unsafe.Pointer(kind.Unsafe()))
 }
 
-func toKindType(t *rtype) unsafe.Pointer {
+func toKindType(t *_rtype) unsafe.Pointer {
 	return unsafe.Pointer(js.InternalObject(t).Get("kindType").Unsafe())
 }
 
-func toUncommonType(t *rtype) *uncommonType {
+func toUncommonType(t *_rtype) *uncommonType {
 	kind := js.InternalObject(t).Get("uncommonType")
 	if kind == js.Undefined {
 		return nil
@@ -65,15 +65,15 @@ func (t *uncommonType) exportedMethods() []method {
 	return t._methods[:t.xcount:t.xcount]
 }
 
-func (t *rtype) ptrTo() *rtype {
+func (t *_rtype) ptrTo() *_rtype {
 	return reflectType(js.Global.Call("$ptrType", jsType(t)))
 }
 
-func (t *rtype) uncommon() *uncommonType {
+func (t *_rtype) uncommon() *uncommonType {
 	return toUncommonType(t)
 }
 
-func (t *rtype) exportedMethods() []method {
+func (t *_rtype) exportedMethods() []method {
 	ut := t.uncommon()
 	if ut == nil {
 		return nil
@@ -197,10 +197,10 @@ func NamedTypeOf(pkg string, name string, from reflect.Type) (typ reflect.Type) 
 }
 
 var (
-	jsUncommonTyp = js.InternalObject(reflect.TypeOf((*rtype)(nil))).Get("uncommonType").Get("constructor")
+	jsUncommonTyp = js.InternalObject(reflect.TypeOf((*_rtype)(nil))).Get("uncommonType").Get("constructor")
 )
 
-func resetUncommonType(rt *rtype, xcount int, mcount int) *uncommonType {
+func resetUncommonType(rt *_rtype, xcount int, mcount int) *uncommonType {
 	ut := jsUncommonTyp.New()
 	v := js.InternalObject(ut).Get("_methods").Get("constructor")
 	ut.Set("xcount", xcount)
@@ -211,7 +211,7 @@ func resetUncommonType(rt *rtype, xcount int, mcount int) *uncommonType {
 	return (*uncommonType)(unsafe.Pointer(ut.Unsafe()))
 }
 
-func newType(pkg string, name string, styp reflect.Type, xcount int, mcount int) (*rtype, []method) {
+func newType(pkg string, name string, styp reflect.Type, xcount int, mcount int) (*_rtype, []method) {
 	kind := styp.Kind()
 	var obj *js.Object
 	switch kind {
@@ -275,7 +275,7 @@ func newType(pkg string, name string, styp reflect.Type, xcount int, mcount int)
 	return rt, ut._methods
 }
 
-func totype(typ reflect.Type) *rtype {
+func totype(typ reflect.Type) *_rtype {
 	v := reflect.Zero(typ)
 	rt := (*Value)(unsafe.Pointer(&v)).typ
 	return rt
@@ -288,19 +288,19 @@ func internalStr(strObj *js.Object) string {
 }
 
 type funcType struct {
-	rtype    `reflect:"func"`
+	_rtype   `reflect:"func"`
 	inCount  uint16
 	outCount uint16
 
-	_in  []*rtype
-	_out []*rtype
+	_in  []*_rtype
+	_out []*_rtype
 }
 
-func (t *funcType) in() []*rtype {
+func (t *funcType) in() []*_rtype {
 	return t._in
 }
 
-func (t *funcType) out() []*rtype {
+func (t *funcType) out() []*_rtype {
 	return t._out
 }
 

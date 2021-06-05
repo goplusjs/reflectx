@@ -68,7 +68,6 @@ func TestField(t *testing.T) {
 }
 
 func TestStructOfExport(t *testing.T) {
-	tyInt := reflect.TypeOf(0)
 	fs := []reflect.StructField{
 		reflect.StructField{
 			Name:    "x",
@@ -83,13 +82,9 @@ func TestStructOfExport(t *testing.T) {
 	}
 	typ := reflectx.NamedStructOf("main", "Point", fs)
 	v := reflect.New(typ).Elem()
-	v.Field(0).SetInt(100)
-	v.Field(1).SetInt(200)
-	if s := fmt.Sprint(v.Interface()); s != "{100 200}" {
-		t.Fatalf("have %v, want {100 200}", s)
-	}
-	v2 := reflect.NewAt(typ, unsafe.Pointer(v.Addr().Pointer())).Elem()
-	if s := fmt.Sprint(v2.Interface()); s != "{100 200}" {
+	reflectx.FieldByIndex(v, []int{0}).SetInt(100)
+	reflectx.FieldByIndex(v, []int{1}).SetInt(200)
+	if s := fmt.Sprint(v); s != "{100 200}" {
 		t.Fatalf("have %v, want {100 200}", s)
 	}
 }
@@ -216,15 +211,14 @@ func TestNamedType(t *testing.T) {
 		}
 		nv := reflect.New(nt).Elem()
 		reflectx.SetValue(nv, value) //
-		s1 := fmt.Sprint(reflectx.Interface(nv))
+		s1 := fmt.Sprint((nv))
 		s2 := fmt.Sprint(v)
 		if s1 != s2 {
 			t.Errorf("%v: have %v, want %v", nt.Kind(), s1, s2)
 		}
 		if nt2.Name() != name {
-			t.Errorf("name: have %v, want %v, %v,%v,  %v", nt2.Name(), name, nt2, nt2.Kind(), typ)
+			t.Errorf("name: have %v, want %v", nt2.Name(), name)
 		}
-		//log.Println(typ, nt, nt.Name(), nt.PkgPath())
 		if nt2.PkgPath() != pkgpath {
 			t.Errorf("pkgpath: have %v, want %v", nt2.PkgPath(), pkgpath)
 		}
@@ -238,7 +232,7 @@ var testInterfaceType = []reflect.Type{
 		Read(p []byte) (n int, err error)
 		Write(p []byte) (n int, err error)
 		Close() error
-	})(nil)).Elem(),
+	})(nil)),
 }
 
 func TestNamedInterface(t *testing.T) {

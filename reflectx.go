@@ -100,7 +100,10 @@ func NamedStructOf(pkgpath string, name string, fields []reflect.StructField) re
 	return NamedTypeOf(pkgpath, name, StructOf(fields))
 }
 
-func setTypeName(t *rtype, pkgpath string, name string) {
+func setTypeName(t *_rtype, pkgpath string, name string) {
+	if pkgpath == "" && name == "" {
+		return
+	}
 	exported := isExported(name)
 	if pkgpath != "" {
 		_, f := path.Split(pkgpath)
@@ -113,7 +116,7 @@ func setTypeName(t *rtype, pkgpath string, name string) {
 	}
 }
 
-func copyType(dst *rtype, src *rtype) {
+func copyType(dst *_rtype, src *_rtype) {
 	dst.size = src.size
 	dst.kind = src.kind
 	dst.equal = src.equal
@@ -130,8 +133,32 @@ func isExported(name string) bool {
 }
 
 var (
-	DisableStructOfExportAllField bool
+	EnableStructOfExportAllField bool
 )
+
+var (
+	structLookupCache = make(map[string]reflect.Type)
+)
+
+func checkFields(t1, t2 reflect.Type) bool {
+	n1 := t1.NumField()
+	n2 := t2.NumField()
+	if n1 != n2 {
+		return false
+	}
+	for i := 0; i < n1; i++ {
+		f1 := t1.Field(i)
+		f2 := t2.Field(i)
+		if f1.Name != f2.Name ||
+			f1.PkgPath != f2.PkgPath ||
+			f1.Anonymous != f2.Anonymous ||
+			f1.Type != f2.Type ||
+			f1.Offset != f2.Offset {
+			return false
+		}
+	}
+	return true
+}
 
 func StructOf(fields []reflect.StructField) reflect.Type {
 	var anonymous []int
@@ -153,12 +180,19 @@ func StructOf(fields []reflect.StructField) reflect.Type {
 	for _, i := range anonymous {
 		st.fields[i].offsetEmbed |= 1
 	}
-	if !DisableStructOfExportAllField {
+	if EnableStructOfExportAllField {
 		for i := 0; i < len(fs); i++ {
 			f := fs[i]
 			st.fields[i].name = newName(f.Name, string(f.Tag), true)
 		}
 	}
+	str := typ.String()
+	if t, ok := structLookupCache[str]; ok {
+		if checkFields(t, typ) {
+			return t
+		}
+	}
+	structLookupCache[str] = typ
 	return typ
 }
 
