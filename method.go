@@ -2,6 +2,7 @@ package reflectx
 
 import (
 	"fmt"
+	"log"
 	"reflect"
 	"sort"
 	"strings"
@@ -51,6 +52,9 @@ func extraFieldMethod(ifield int, typ reflect.Type, skip map[string]bool) (metho
 		} else {
 			fn = func(args []reflect.Value) []reflect.Value {
 				args[0] = args[0].Field(ifield)
+				if mtyp.IsVariadic() {
+					return m.Func.CallSlice(args)
+				}
 				return m.Func.Call(args)
 			}
 		}
@@ -85,6 +89,9 @@ func extraPtrFieldMethod(ifield int, typ reflect.Type) (methods []Method) {
 			Type: mtyp,
 			Func: func(args []reflect.Value) []reflect.Value {
 				var recv = args[0]
+				if mtyp.IsVariadic() {
+					return recv.Field(ifield).Method(imethod).CallSlice(args[1:])
+				}
 				return recv.Field(ifield).Method(imethod).Call(args[1:])
 			},
 		})
@@ -149,12 +156,136 @@ func extractEmbedMethod(styp reflect.Type) []Method {
 	return ms
 }
 
-func MethodOf(styp reflect.Type, methods []Method) reflect.Type {
+func UpdateField(typ reflect.Type, rmap map[reflect.Type]reflect.Type) bool {
+	if rmap == nil || typ.Kind() != reflect.Struct {
+		return false
+	}
+	rt := totype(typ)
+	st := toStructType(rt)
+	for i := 0; i < len(st.fields); i++ {
+		t := replaceType(toType(st.fields[i].typ), rmap)
+		st.fields[i].typ = totype(t)
+	}
+	return true
+}
+
+// func UpdateMethod(typ reflect.Type, methods []Method, rmap map[reflect.Type]reflect.Type) bool {
+// 	chk := make(map[string]int)
+// 	for _, m := range methods {
+// 		chk[m.Name]++
+// 		if chk[m.Name] > 1 {
+// 			panic(fmt.Sprintf("method redeclared: %v", m.Name))
+// 		}
+// 	}
+// 	if typ.Kind() == reflect.Struct {
+// 		ms := extractEmbedMethod(typ)
+// 		for _, m := range ms {
+// 			if chk[m.Name] == 1 {
+// 				continue
+// 			}
+// 			methods = append(methods, m)
+// 		}
+// 	}
+// 	return updateMethod(typ, methods, rmap)
+// }
+
+func Reset() {
+	resetTypeList()
+	ntypeMap = make(map[reflect.Type]*Named)
+	embedLookupCache = make(map[reflect.Type]reflect.Type)
+	structLookupCache = make(map[string]reflect.Type)
+	interfceLookupCache = make(map[string]reflect.Type)
+}
+
+var (
+	embedLookupCache = make(map[reflect.Type]reflect.Type)
+)
+
+// StructToMethodSet extract method form struct embed fields
+func StructToMethodSet(styp reflect.Type) reflect.Type {
+	if styp.Kind() != reflect.Struct {
+		return styp
+	}
+	ms := extractEmbedMethod(styp)
+	if len(ms) == 0 {
+		return styp
+	}
+	if typ, ok := embedLookupCache[styp]; ok {
+		return typ
+	}
+	var methods []Method
+	var mcout, pcount int
+	for _, m := range ms {
+		if !m.Pointer {
+			mcout++
+		}
+		pcount++
+		methods = append(methods, m)
+	}
+	typ := newMethodSet(styp, mcout, pcount)
+	err := setMethodSet(typ, methods)
+	if err != nil {
+		log.Panicln("error loadMethods", err)
+	}
+	embedLookupCache[styp] = typ
+	return typ
+}
+
+// func MethodOf(styp reflect.Type, methods []Method) reflect.Type {
+// 	chk := make(map[string]int)
+// 	for _, m := range methods {
+// 		chk[m.Name]++
+// 		if chk[m.Name] > 1 {
+// 			panic(fmt.Sprintf("method redeclared: %v", m.Name))
+// 		}
+// 	}
+// 	if styp.Kind() == reflect.Struct {
+// 		ms := extractEmbedMethod(styp)
+// 		for _, m := range ms {
+// 			if chk[m.Name] == 1 {
+// 				continue
+// 			}
+// 			methods = append(methods, m)
+// 		}
+// 	}
+// 	typ := methodSetOf(styp, len(methods), len(methods))
+// 	err := loadMethods(typ, methods)
+// 	if err != nil {
+// 		log.Panicln("error loadMethods", err)
+// 	}
+// 	return typ
+// }
+
+// NewMethodSet is pre define method set of styp
+// maxmfunc - set methodset of T max member func
+// maxpfunc - set methodset of *T + T max member func
+func NewMethodSet(styp reflect.Type, maxmfunc, maxpfunc int) reflect.Type {
+	if maxpfunc == 0 {
+		return StructToMethodSet(styp)
+	}
+	chk := make(map[string]int)
+	if styp.Kind() == reflect.Struct {
+		ms := extractEmbedMethod(styp)
+		for _, m := range ms {
+			if chk[m.Name] == 1 {
+				continue
+			}
+			maxpfunc++
+			if !m.Pointer {
+				maxmfunc++
+			}
+		}
+	}
+	typ := newMethodSet(styp, maxmfunc, maxpfunc)
+	return typ
+}
+
+func SetMethodSet(styp reflect.Type, methods []Method) error {
 	chk := make(map[string]int)
 	for _, m := range methods {
 		chk[m.Name]++
 		if chk[m.Name] > 1 {
-			panic(fmt.Sprintf("method redeclared: %v", m.Name))
+			return fmt.Errorf("method redeclared: %v", m.Name)
 		}
 	}
 	if styp.Kind() == reflect.Struct {
@@ -166,29 +297,75 @@ func MethodOf(styp reflect.Type, methods []Method) reflect.Type {
 			methods = append(methods, m)
 		}
 	}
-	return methodOf(styp, methods)
+	return setMethodSet(styp, methods)
 }
 
 func MakeEmptyInterface(pkgpath string, name string) reflect.Type {
 	return NamedTypeOf(pkgpath, name, tyEmptyInterface)
 }
 
-func NamedInterfaceOf(pkgpath string, name string, embedded []reflect.Type, methods []Method) reflect.Type {
-	styp := NamedTypeOf(pkgpath, name, tyEmptyInterface)
-	return InterfaceOf(styp, embedded, methods)
+func NamedInterfaceOf(pkgpath string, name string, embedded []reflect.Type, methods []reflect.Method) reflect.Type {
+	typ := InterfaceOf(embedded, methods)
+	return NamedTypeOf(pkgpath, name, typ)
 }
 
-func InterfaceOf(styp reflect.Type, embedded []reflect.Type, methods []Method) reflect.Type {
-	if styp.Kind() != reflect.Interface {
-		panic(fmt.Errorf("non-interface %v", styp))
+var (
+	interfceLookupCache = make(map[string]reflect.Type)
+)
+
+func NewInterfaceType(pkgpath string, name string) reflect.Type {
+	rt, _ := newType("", "", tyEmptyInterface, 0, 0)
+	setTypeName(rt, pkgpath, name)
+	return toType(rt)
+}
+
+func SetInterfaceType(typ reflect.Type, embedded []reflect.Type, methods []reflect.Method) error {
+	for _, e := range embedded {
+		if e.Kind() != reflect.Interface {
+			return fmt.Errorf("interface contains embedded non-interface %v", e)
+		}
+		for i := 0; i < e.NumMethod(); i++ {
+			m := e.Method(i)
+			methods = append(methods, reflect.Method{
+				Name: m.Name,
+				Type: m.Type,
+			})
+		}
 	}
+	sort.Slice(methods, func(i, j int) bool {
+		n := strings.Compare(methods[i].Name, methods[j].Name)
+		if n == 0 && methods[i].Type != methods[j].Type {
+			panic(fmt.Errorf("duplicate method %v", methods[j].Name))
+		}
+		return n < 0
+	})
+	rt := totype(typ)
+	st := (*interfaceType)(toKindType(rt))
+	st.methods = nil
+	var info []string
+	var lastname string
+	for _, m := range methods {
+		if m.Name == lastname {
+			continue
+		}
+		lastname = m.Name
+		st.methods = append(st.methods, imethod{
+			name: resolveReflectName(newName(m.Name, "", true)),
+			typ:  resolveReflectType(totype(m.Type)),
+		})
+		info = append(info, methodStr(m.Name, m.Type))
+	}
+	return nil
+}
+
+func InterfaceOf(embedded []reflect.Type, methods []reflect.Method) reflect.Type {
 	for _, e := range embedded {
 		if e.Kind() != reflect.Interface {
 			panic(fmt.Errorf("interface contains embedded non-interface %v", e))
 		}
 		for i := 0; i < e.NumMethod(); i++ {
 			m := e.Method(i)
-			methods = append(methods, Method{
+			methods = append(methods, reflect.Method{
 				Name: m.Name,
 				Type: m.Type,
 			})
@@ -201,9 +378,10 @@ func InterfaceOf(styp reflect.Type, embedded []reflect.Type, methods []Method) r
 		}
 		return n < 0
 	})
-	rt, _ := newType(styp.PkgPath(), styp.Name(), styp, 0, 0)
+	rt, _ := newType("", "", tyEmptyInterface, 0, 0)
 	st := (*interfaceType)(toKindType(rt))
 	st.methods = nil
+	var info []string
 	var lastname string
 	for _, m := range methods {
 		if m.Name == lastname {
@@ -211,11 +389,28 @@ func InterfaceOf(styp reflect.Type, embedded []reflect.Type, methods []Method) r
 		}
 		lastname = m.Name
 		st.methods = append(st.methods, imethod{
-			name: resolveReflectName(newName(m.Name, "", isExported(m.Name))),
+			name: resolveReflectName(newName(m.Name, "", true)),
 			typ:  resolveReflectType(totype(m.Type)),
 		})
+		info = append(info, methodStr(m.Name, m.Type))
 	}
-	return toType(rt)
+	var str string
+	if len(info) > 0 {
+		str = fmt.Sprintf("*interface { %v }", strings.Join(info, "; "))
+	} else {
+		str = "*interface {}"
+	}
+	if t, ok := interfceLookupCache[str]; ok {
+		return t
+	}
+	rt.str = resolveReflectName(newName(str, "", false))
+	typ := toType(rt)
+	interfceLookupCache[str] = typ
+	return typ
+}
+
+func methodStr(name string, typ reflect.Type) string {
+	return strings.Replace(typ.String(), "func", name, 1)
 }
 
 func toElem(typ reflect.Type) reflect.Type {
@@ -232,11 +427,13 @@ func toElemValue(v reflect.Value) reflect.Value {
 	return v
 }
 
-func toRealType(typ, orgtyp, mtyp reflect.Type) (in, out []reflect.Type, ntyp, inTyp, outTyp reflect.Type) {
+func replaceType(typ reflect.Type, rmap map[reflect.Type]reflect.Type) reflect.Type {
 	var fnx func(t reflect.Type) (reflect.Type, bool)
 	fnx = func(t reflect.Type) (reflect.Type, bool) {
-		if t == orgtyp {
-			return typ, true
+		for k, v := range rmap {
+			if k.String() == t.String() {
+				return v, true
+			}
 		}
 		switch t.Kind() {
 		case reflect.Ptr:
@@ -260,16 +457,20 @@ func toRealType(typ, orgtyp, mtyp reflect.Type) (in, out []reflect.Type, ntyp, i
 		}
 		return t, false
 	}
-	fn := func(t reflect.Type) reflect.Type {
-		if r, ok := fnx(t); ok {
-			return r
-		}
-		return t
+	if r, ok := fnx(typ); ok {
+		return r
 	}
+	return typ
+}
+
+func parserMethodType(mtyp reflect.Type, rmap map[reflect.Type]reflect.Type) (in, out []reflect.Type, ntyp, inTyp, outTyp reflect.Type) {
 	var inFields []reflect.StructField
 	var outFields []reflect.StructField
 	for i := 0; i < mtyp.NumIn(); i++ {
-		t := fn(mtyp.In(i))
+		t := mtyp.In(i)
+		if rmap != nil {
+			t = replaceType(t, rmap)
+		}
 		in = append(in, t)
 		inFields = append(inFields, reflect.StructField{
 			Name: fmt.Sprintf("Arg%v", i),
@@ -277,14 +478,21 @@ func toRealType(typ, orgtyp, mtyp reflect.Type) (in, out []reflect.Type, ntyp, i
 		})
 	}
 	for i := 0; i < mtyp.NumOut(); i++ {
-		t := fn(mtyp.Out(i))
+		t := mtyp.Out(i)
+		if rmap != nil {
+			t = replaceType(t, rmap)
+		}
 		out = append(out, t)
 		outFields = append(outFields, reflect.StructField{
 			Name: fmt.Sprintf("Out%v", i),
 			Type: t,
 		})
 	}
-	ntyp = reflect.FuncOf(in, out, mtyp.IsVariadic())
+	if rmap == nil {
+		ntyp = mtyp
+	} else {
+		ntyp = reflect.FuncOf(in, out, mtyp.IsVariadic())
+	}
 	inTyp = reflect.StructOf(inFields)
 	outTyp = reflect.StructOf(outFields)
 	return
