@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/goplusjs/reflectx"
+	"github.com/goplus/reflectx"
 )
 
 var (
