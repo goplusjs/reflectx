@@ -77,8 +77,14 @@ func (t *rtype) ptrTo() *rtype {
 	return reflectType(js.Global.Call("$ptrType", jsType(t)))
 }
 
+//go:linkename rtype_uncommon reflect.(*rtype).uncommon
+func rtype_uncommon(*rtype) *uncommonType
+
+//go:linkename rtype_methods reflect.(*rtype).methods
+func rtype_methods(*rtype) []method
+
 func (t *rtype) uncommon() *uncommonType {
-	return toUncommonType(t)
+	return rtype_uncommon(t)
 }
 
 func (t *rtype) exportedMethods() []method {
@@ -349,6 +355,9 @@ func jsType(typ interface{}) *js.Object {
 
 func NumMethodX(typ reflect.Type) int {
 	t := totype(typ)
+	if t.tflag == 0 {
+		return 0
+	}
 	ut := t.uncommon()
 	if ut == nil {
 		return 0
