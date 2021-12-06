@@ -2,10 +2,15 @@ package reflectx
 
 import (
 	"fmt"
+	"go/token"
 	"log"
 	"reflect"
 	"sort"
 	"strings"
+)
+
+var (
+	EnableExportAllMethod = false
 )
 
 // MakeMethod make reflect.Method for MethodOf
@@ -13,9 +18,10 @@ import (
 // - pointer: flag receiver struct or pointer
 // - typ: method func type without receiver
 // - fn: func with receiver as first argument
-func MakeMethod(name string, pointer bool, typ reflect.Type, fn func(args []reflect.Value) (result []reflect.Value)) Method {
+func MakeMethod(name string, pkgpath string, pointer bool, typ reflect.Type, fn func(args []reflect.Value) (result []reflect.Value)) Method {
 	return Method{
 		Name:    name,
+		PkgPath: pkgpath,
 		Pointer: pointer,
 		Type:    typ,
 		Func:    fn,
@@ -29,6 +35,7 @@ func MakeMethod(name string, pointer bool, typ reflect.Type, fn func(args []refl
 // - fn: func with receiver as first argument
 type Method struct {
 	Name    string
+	PkgPath string
 	Pointer bool
 	Type    reflect.Type
 	Func    func([]reflect.Value) []reflect.Value
@@ -193,7 +200,7 @@ func Reset() {
 	resetTypeList()
 	ntypeMap = make(map[reflect.Type]*Named)
 	embedLookupCache = make(map[reflect.Type]reflect.Type)
-	structLookupCache = make(map[string]reflect.Type)
+	structLookupCache = make(map[string][]reflect.Type)
 	interfceLookupCache = make(map[string]reflect.Type)
 }
 
@@ -280,7 +287,7 @@ func NewMethodSet(styp reflect.Type, maxmfunc, maxpfunc int) reflect.Type {
 	return typ
 }
 
-func SetMethodSet(styp reflect.Type, methods []Method) error {
+func SetMethodSet(styp reflect.Type, methods []Method, extractStructEmbed bool) error {
 	chk := make(map[string]int)
 	for _, m := range methods {
 		chk[m.Name]++
@@ -288,7 +295,7 @@ func SetMethodSet(styp reflect.Type, methods []Method) error {
 			return fmt.Errorf("method redeclared: %v", m.Name)
 		}
 	}
-	if styp.Kind() == reflect.Struct {
+	if extractStructEmbed && styp.Kind() == reflect.Struct {
 		ms := extractEmbedMethod(styp)
 		for _, m := range ms {
 			if chk[m.Name] == 1 {
@@ -345,13 +352,28 @@ func SetInterfaceType(typ reflect.Type, embedded []reflect.Type, methods []refle
 	st.methods = nil
 	var info []string
 	var lastname string
+	var unnamed bool
+	if typ.Name() == "" {
+		unnamed = true
+	}
 	for _, m := range methods {
 		if m.Name == lastname {
 			continue
 		}
 		lastname = m.Name
+		isexport := methodIsExported(m.Name)
+		var mname nameOff
+		if unnamed {
+			nm := newNameEx(m.Name, "", isexport, !isexport)
+			mname = resolveReflectName(nm)
+			if !isexport {
+				nm.setPkgPath(resolveReflectName(newName(m.PkgPath, "", false)))
+			}
+		} else {
+			mname = resolveReflectName(newName(m.Name, "", isexport))
+		}
 		st.methods = append(st.methods, imethod{
-			name: resolveReflectName(newName(m.Name, "", true)),
+			name: mname,
 			typ:  resolveReflectType(totype(m.Type)),
 		})
 		info = append(info, methodStr(m.Name, m.Type))
@@ -389,8 +411,15 @@ func InterfaceOf(embedded []reflect.Type, methods []reflect.Method) reflect.Type
 			continue
 		}
 		lastname = m.Name
+		isexport := methodIsExported(m.Name)
+		var mname nameOff
+		nm := newNameEx(m.Name, "", isexport, !isexport)
+		mname = resolveReflectName(nm)
+		if !isexport {
+			nm.setPkgPath(resolveReflectName(newName(m.PkgPath, "", false)))
+		}
 		st.methods = append(st.methods, imethod{
-			name: resolveReflectName(newName(m.Name, "", true)),
+			name: mname,
 			typ:  resolveReflectType(totype(m.Type)),
 		})
 		info = append(info, methodStr(m.Name, m.Type))
@@ -408,6 +437,13 @@ func InterfaceOf(embedded []reflect.Type, methods []reflect.Method) reflect.Type
 	typ := toType(rt)
 	interfceLookupCache[str] = typ
 	return typ
+}
+
+func methodIsExported(name string) bool {
+	if EnableExportAllMethod {
+		return true
+	}
+	return token.IsExported(name)
 }
 
 func methodStr(name string, typ reflect.Type) string {

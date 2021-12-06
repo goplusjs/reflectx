@@ -19,6 +19,7 @@ package reflectx
 import (
 	"path"
 	"reflect"
+	"strconv"
 	"unicode"
 	"unicode/utf8"
 	"unsafe"
@@ -100,7 +101,7 @@ func NamedStructOf(pkgpath string, name string, fields []reflect.StructField) re
 	return NamedTypeOf(pkgpath, name, StructOf(fields))
 }
 
-func setTypeName(t *_rtype, pkgpath string, name string) {
+func setTypeName(t *rtype, pkgpath string, name string) {
 	if pkgpath == "" && name == "" {
 		return
 	}
@@ -114,9 +115,17 @@ func setTypeName(t *_rtype, pkgpath string, name string) {
 	if t.tflag&tflagUncommon == tflagUncommon {
 		toUncommonType(t).pkgPath = resolveReflectName(newName(pkgpath, "", false))
 	}
+	switch t.Kind() {
+	case reflect.Struct:
+		st := (*structType)(toKindType(t))
+		st.pkgPath = newName(pkgpath, "", false)
+	case reflect.Interface:
+		st := (*interfaceType)(toKindType(t))
+		st.pkgPath = newName(pkgpath, "", false)
+	}
 }
 
-func copyType(dst *_rtype, src *_rtype) {
+func copyType(dst *rtype, src *rtype) {
 	dst.size = src.size
 	dst.kind = src.kind
 	dst.equal = src.equal
@@ -137,7 +146,7 @@ var (
 )
 
 var (
-	structLookupCache = make(map[string]reflect.Type)
+	structLookupCache = make(map[string][]reflect.Type)
 )
 
 func checkFields(t1, t2 reflect.Type) bool {
@@ -160,8 +169,13 @@ func checkFields(t1, t2 reflect.Type) bool {
 	return true
 }
 
+//go:linkname haveIdenticalType reflect.haveIdenticalType
+func haveIdenticalType(T, V reflect.Type, cmpTags bool) bool
+
 func StructOf(fields []reflect.StructField) reflect.Type {
 	var anonymous []int
+	underscore := make(map[int]name)
+	var underscoreCount int
 	fs := make([]reflect.StructField, len(fields))
 	for i := 0; i < len(fields); i++ {
 		f := fields[i]
@@ -171,6 +185,12 @@ func StructOf(fields []reflect.StructField) reflect.Type {
 			if f.Name == "" {
 				f.Name = typeName(f.Type)
 			}
+		} else if f.Name == "_" {
+			if underscoreCount > 0 {
+				underscore[i] = newName("_", string(f.Tag), false)
+				f.Name = "_gop_underscore_" + strconv.Itoa(i)
+			}
+			underscoreCount++
 		}
 		fs[i] = f
 	}
@@ -180,6 +200,9 @@ func StructOf(fields []reflect.StructField) reflect.Type {
 	for _, i := range anonymous {
 		st.fields[i].offsetEmbed |= 1
 	}
+	for i, n := range underscore {
+		st.fields[i].name = n
+	}
 	if EnableStructOfExportAllField {
 		for i := 0; i < len(fs); i++ {
 			f := fs[i]
@@ -187,12 +210,19 @@ func StructOf(fields []reflect.StructField) reflect.Type {
 		}
 	}
 	str := typ.String()
-	if t, ok := structLookupCache[str]; ok {
-		if checkFields(t, typ) {
-			return t
+	if ts, ok := structLookupCache[str]; ok {
+		for _, t := range ts {
+			if haveIdenticalType(t, typ, true) {
+				return t
+			}
 		}
+		ts = append(ts, typ)
+	} else {
+		structLookupCache[str] = []reflect.Type{typ}
 	}
-	structLookupCache[str] = typ
+	if isRegularMemory(typ) {
+		rt.tflag |= tflagRegularMemory
+	}
 	return typ
 }
 
@@ -231,6 +261,7 @@ var (
 	tyEmptyInterface    = reflect.TypeOf((*interface{})(nil)).Elem()
 	tyEmptyInterfacePtr = reflect.TypeOf((*interface{})(nil))
 	tyEmptyStruct       = reflect.TypeOf((*struct{})(nil)).Elem()
+	tyErrorInterface    = reflect.TypeOf((*error)(nil)).Elem()
 )
 
 func SetElem(typ reflect.Type, elem reflect.Type) {
@@ -256,64 +287,230 @@ func SetElem(typ reflect.Type, elem reflect.Type) {
 	}
 }
 
-func ReplaceType(typ reflect.Type, m map[string]reflect.Type) {
+func typeId(typ reflect.Type) string {
+	var id string
+	if path := typ.PkgPath(); path != "" {
+		id = path + "."
+	}
+	return id + typ.Name()
+}
+
+type replaceTypeContext struct {
+	checking map[reflect.Type]bool
+}
+
+func ReplaceType(pkg string, typ reflect.Type, m map[string]reflect.Type) (rtyp reflect.Type, changed bool) {
+	ctx := &replaceTypeContext{make(map[reflect.Type]bool)}
+	return ctx.replace(pkg, typ, m)
+}
+
+func (ctx *replaceTypeContext) replace(pkg string, typ reflect.Type, m map[string]reflect.Type) (rtyp reflect.Type, changed bool) {
+	if ctx.checking[typ] {
+		return
+	}
+	ctx.checking[typ] = true
 	rt := totype(typ)
 	switch typ.Kind() {
 	case reflect.Struct:
+		if typ.PkgPath() != pkg {
+			return
+		}
 		st := (*structType)(toKindType(rt))
-		for _, field := range st.fields {
-			et := toType(field.typ)
-			if t, ok := m[et.Name()]; ok {
-				field.typ = totype(t)
+		for i := 0; i < len(st.fields); i++ {
+			et := toType(st.fields[i].typ)
+			if t, ok := m[typeId(et)]; ok {
+				st.fields[i].typ = totype(t)
+				changed = true
 			} else {
-				ReplaceType(et, m)
+				if rtyp, ok := ctx.replace(pkg, et, m); ok {
+					changed = true
+					st.fields[i].typ = totype(rtyp)
+				}
 			}
+		}
+		if changed {
+			return toType(rt), true
 		}
 	case reflect.Ptr:
 		st := (*ptrType)(toKindType(rt))
 		et := toType(st.elem)
-		if t, ok := m[et.Name()]; ok {
+		if t, ok := m[typeId(et)]; ok {
 			st.elem = totype(t)
+			return reflect.PtrTo(t), true
 		} else {
-			ReplaceType(et, m)
+			if rtyp, ok := ctx.replace(pkg, et, m); ok {
+				return reflect.PtrTo(rtyp), true
+			}
 		}
 	case reflect.Slice:
 		st := (*sliceType)(toKindType(rt))
 		et := toType(st.elem)
-		if t, ok := m[et.Name()]; ok {
+		if t, ok := m[typeId(et)]; ok {
 			st.elem = totype(t)
+			return reflect.SliceOf(t), true
 		} else {
-			ReplaceType(et, m)
+			if rtyp, ok := ctx.replace(pkg, et, m); ok {
+				return reflect.SliceOf(rtyp), true
+			}
 		}
 	case reflect.Array:
 		st := (*arrayType)(toKindType(rt))
 		et := toType(st.elem)
-		if t, ok := m[et.Name()]; ok {
+		if t, ok := m[typeId(et)]; ok {
 			st.elem = totype(t)
+			return reflect.ArrayOf(int(st.len), t), true
 		} else {
-			ReplaceType(et, m)
+			if rtyp, ok := ctx.replace(pkg, et, m); ok {
+				return reflect.ArrayOf(int(st.len), rtyp), true
+			}
 		}
 	case reflect.Map:
 		st := (*mapType)(toKindType(rt))
 		kt := toType(st.key)
 		et := toType(st.elem)
-		if t, ok := m[kt.Name()]; ok {
-			st.key = totype(t)
+		if t, ok := m[typeId(kt)]; ok {
+			kt = t
+			changed = true
 		} else {
-			ReplaceType(kt, m)
+			if rtyp, ok := ctx.replace(pkg, kt, m); ok {
+				kt = rtyp
+				changed = true
+			}
 		}
-		if t, ok := m[et.Name()]; ok {
-			st.elem = totype(t)
+		if t, ok := m[typeId(et)]; ok {
+			et = t
+			changed = true
 		} else {
-			ReplaceType(et, m)
+			if rtyp, ok := ctx.replace(pkg, et, m); ok {
+				et = rtyp
+				changed = true
+			}
+		}
+		if changed {
+			return reflect.MapOf(kt, et), true
 		}
 	case reflect.Chan:
 		st := (*chanType)(toKindType(rt))
 		et := toType(st.elem)
-		if t, ok := m[et.Name()]; ok {
+		if t, ok := m[typeId(et)]; ok {
 			st.elem = totype(t)
+			return reflect.ChanOf(typ.ChanDir(), t), true
 		} else {
-			ReplaceType(et, m)
+			if rtyp, ok := ctx.replace(pkg, et, m); ok {
+				return reflect.ChanOf(typ.ChanDir(), rtyp), true
+			}
+		}
+	case reflect.Func:
+		st := (*funcType)(toKindType(rt))
+		in := st.in()
+		out := st.out()
+		for i := 0; i < len(in); i++ {
+			et := toType(in[i])
+			if t, ok := m[typeId(et)]; ok {
+				in[i] = totype(t)
+				changed = true
+			} else {
+				if rtyp, ok := ctx.replace(pkg, et, m); ok {
+					in[i] = totype(rtyp)
+					changed = true
+				}
+			}
+		}
+		for i := 0; i < len(out); i++ {
+			et := toType(out[i])
+			if t, ok := m[typeId(et)]; ok {
+				out[i] = totype(t)
+				changed = true
+			} else {
+				if rtyp, ok := ctx.replace(pkg, et, m); ok {
+					out[i] = totype(rtyp)
+					changed = true
+				}
+			}
+		}
+		if changed {
+			ins := make([]reflect.Type, len(in))
+			for i := 0; i < len(in); i++ {
+				ins[i] = toType(in[i])
+			}
+			outs := make([]reflect.Type, len(out))
+			for i := 0; i < len(out); i++ {
+				outs[i] = toType(out[i])
+			}
+			return reflect.FuncOf(ins, outs, typ.IsVariadic()), true
+		}
+	case reflect.Interface:
+		if typ.PkgPath() != pkg {
+			return
+		}
+		if typ == tyErrorInterface {
+			return
+		}
+		st := (*interfaceType)(toKindType(rt))
+		for i := 0; i < len(st.methods); i++ {
+			tt := typ.Method(i).Type
+			if t, ok := m[typeId(tt)]; ok {
+				st.methods[i].typ = resolveReflectType(totype(t))
+				changed = true
+			} else if rtyp, ok := ctx.replace(pkg, tt, m); ok {
+				st.methods[i].typ = resolveReflectType(totype(rtyp))
+				changed = true
+			}
+		}
+		if changed {
+			return toType(rt), true
 		}
 	}
+	return nil, false
+}
+
+// go/src/cmd/compile/internal/gc/alg.go#algtype1
+// IsRegularMemory reports whether t can be compared/hashed as regular memory.
+func isRegularMemory(t reflect.Type) bool {
+	switch t.Kind() {
+	case reflect.Func, reflect.Map, reflect.Slice, reflect.String, reflect.Interface:
+		return false
+	case reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128:
+		return false
+	case reflect.Array:
+		b := isRegularMemory(t.Elem())
+		if b {
+			return true
+		}
+		if t.Len() == 0 {
+			return true
+		}
+		return b
+	case reflect.Struct:
+		n := t.NumField()
+		switch n {
+		case 0:
+			return true
+		case 1:
+			f := t.Field(0)
+			if f.Name == "_" {
+				return false
+			}
+			return isRegularMemory(f.Type)
+		default:
+			for i := 0; i < n; i++ {
+				f := t.Field(i)
+				if f.Name == "_" || !isRegularMemory(f.Type) || ispaddedfield(t, i) {
+					return false
+				}
+			}
+		}
+	}
+	return true
+}
+
+// ispaddedfield reports whether the i'th field of struct type t is followed
+// by padding.
+func ispaddedfield(t reflect.Type, i int) bool {
+	end := t.Size()
+	if i+1 < t.NumField() {
+		end = t.Field(i + 1).Offset
+	}
+	fd := t.Field(i)
+	return fd.Offset+fd.Type.Size() != end
 }

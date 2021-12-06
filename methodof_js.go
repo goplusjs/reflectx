@@ -1,3 +1,4 @@
+//go:build js && !wasm
 // +build js,!wasm
 
 package reflectx
@@ -25,7 +26,7 @@ func isMethod(typ reflect.Type) bool {
 }
 
 func MethodByIndex(typ reflect.Type, index int) reflect.Method {
-	m := typ.Method(index)
+	m := MethodX(typ, index)
 	if isMethod(typ) {
 		m.Func = reflect.MakeFunc(m.Type, func(args []reflect.Value) []reflect.Value {
 			recv := args[0].MethodByName(m.Name)
@@ -40,7 +41,7 @@ func MethodByIndex(typ reflect.Type, index int) reflect.Method {
 }
 
 func MethodByName(typ reflect.Type, name string) (m reflect.Method, ok bool) {
-	m, ok = typ.MethodByName(name)
+	m, ok = MethodByNameX(typ, name)
 	if !ok {
 		return
 	}
