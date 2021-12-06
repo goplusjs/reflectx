@@ -1,5 +1,5 @@
-//go:build js
-// +build js
+//go:build js && !wasm
+// +build js,!wasm
 
 package reflectx
 
@@ -416,4 +416,68 @@ func FieldX(v reflect.Value, i int) reflect.Value {
 	field := v.Field(i)
 	canSet(&field)
 	return field
+}
+
+func SetUnderlying(typ reflect.Type, styp reflect.Type) {
+	rt := totype(typ)
+	ort := totype(styp)
+	switch styp.Kind() {
+	case reflect.Struct:
+		st := (*structType)(toKindType(rt))
+		ost := (*structType)(toKindType(ort))
+		st.fields = ost.fields
+	case reflect.Ptr:
+		st := (*ptrType)(toKindType(rt))
+		ost := (*ptrType)(toKindType(ort))
+		st.elem = ost.elem
+	case reflect.Slice:
+		st := (*sliceType)(toKindType(rt))
+		ost := (*sliceType)(toKindType(ort))
+		st.elem = ost.elem
+	case reflect.Array:
+		st := (*arrayType)(toKindType(rt))
+		ost := (*arrayType)(toKindType(ort))
+		st.elem = ost.elem
+		st.slice = ost.slice
+		st.len = ost.len
+	case reflect.Chan:
+		st := (*chanType)(toKindType(rt))
+		ost := (*chanType)(toKindType(ort))
+		st.elem = ost.elem
+		st.dir = ost.dir
+	case reflect.Interface:
+		st := (*interfaceType)(toKindType(rt))
+		ost := (*interfaceType)(toKindType(ort))
+		st.methods = ost.methods
+	case reflect.Map:
+		st := (*mapType)(toKindType(rt))
+		ost := (*mapType)(toKindType(ort))
+		st.key = ost.key
+		st.elem = ost.elem
+		st.bucket = ost.bucket
+		st.hasher = ost.hasher
+		st.keysize = ost.keysize
+		st.valuesize = ost.valuesize
+		st.bucketsize = ost.bucketsize
+		st.flags = ost.flags
+	case reflect.Func:
+		st := (*funcType)(toKindType(rt))
+		ost := (*funcType)(toKindType(ort))
+		st.inCount = ost.inCount
+		st.outCount = ost.outCount
+		st._in = ost._in
+		st._out = ost._out
+	}
+	rt.size = ort.size
+	rt.tflag |= tflagUncommon | tflagExtraStar | tflagNamed
+	rt.kind = ort.kind
+	rt.align = ort.align
+	rt.fieldAlign = ort.fieldAlign
+	rt.gcdata = ort.gcdata
+	rt.ptrdata = ort.ptrdata
+	rt.equal = ort.equal
+	//rt.str = resolveReflectName(ort.nameOff(ort.str))
+	if isRegularMemory(typ) {
+		rt.tflag |= tflagRegularMemory
+	}
 }
