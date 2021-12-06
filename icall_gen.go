@@ -1,3 +1,4 @@
+//go:build ignore
 // +build ignore
 
 package main
@@ -11,27 +12,38 @@ import (
 )
 
 var head = `// +build !js js,wasm
+// +build !go1.17 go1.17,!goexperiment.regabireflect
 
 package reflectx
 
 import (
 	"log"
-	"unsafe"
 )
 
-func icall(t int, i int, ptrto bool) interface{} {
+var (
+	check_max_itype = true
+	check_max_index = true
+)
+
+func icall(t int, i int, max int, ptrto bool, output bool) interface{} {
 	if t >= max_itype_index {
-		log.Println("warning, not support too many types interface call", t)
-		return nil
+		if check_max_itype {
+			check_max_itype = false
+			log.Println("warning, too many types interface call >", t)
+		}
+		return func(p, a unsafeptr) {}
 	}
 	if i >= max_icall_index {
-		log.Println("warning, not support too many methods interface call", i)
-		return nil
+		if check_max_index {
+			check_max_index = false
+			log.Println("warning, too many methods interface call >", i)
+		}
+		return func(p, a unsafeptr) {}
 	}
 	if ptrto {
-		return icall_ptr[t*$max_index+i]
+		return icall_ptr[t*max_icall_index+i]
 	} else {
-		return icall_typ[t*$max_index+i]
+		return icall_typ[t*max_icall_index+i]
 	}
 }
 
@@ -39,11 +51,11 @@ const max_itype_index = $max_itype
 const max_icall_index = $max_index
 `
 
-var templ_fn = `	func(p, a unsafe.Pointer) { i_x($itype, $index, p, unsafe.Pointer(&a), $ptr) },
+var templ_fn = `	func(p, a unsafeptr) { i_x($itype, $index, p, unsafeptr(&a), $ptr) },
 `
 
 func main() {
-	writeFile("./icall.go", 64, 128)
+	writeFile("./icall.go", 64, 256)
 }
 
 func writeFile(filename string, max_itype int, max_index int) {

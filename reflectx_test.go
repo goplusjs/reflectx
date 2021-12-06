@@ -67,6 +67,51 @@ func TestField(t *testing.T) {
 	}
 }
 
+func TestFieldX(t *testing.T) {
+	x := &Rect{nPoint{1, 2}, &nPoint{3, 4}}
+	v := reflect.ValueOf(x).Elem()
+	reflectx.FieldX(v, 0).Set(reflect.ValueOf(nPoint{10, 20}))
+	if x.pt1.x != 10 || x.pt1.y != 20 {
+		t.Fatalf("pt1 %v", x.pt1)
+	}
+	reflectx.FieldByNameX(v, "pt2").Set(reflect.ValueOf(&nPoint{30, 40}))
+	if x.pt2.x != 30 || x.pt2.y != 40 {
+		t.Fatalf("pt2 %v", x.pt2)
+	}
+	reflectx.FieldByNameFuncX(v, func(name string) bool {
+		return name == "pt2"
+	}).Set(reflect.ValueOf(&nPoint{50, 60}))
+	if x.pt2.x != 50 || x.pt2.y != 60 {
+		t.Fatalf("pt2 %v", x.pt2)
+	}
+	reflectx.FieldByIndexX(v, []int{0, 1}).SetInt(100)
+	if x.pt1.y != 100 {
+		t.Fatalf("pt1.y %v", x.pt1)
+	}
+}
+
+func TestStructOfUnderscore(t *testing.T) {
+	fs := []reflect.StructField{
+		reflect.StructField{
+			Name:    "_",
+			PkgPath: "main",
+			Type:    tyInt,
+		},
+		reflect.StructField{
+			Name:    "_",
+			PkgPath: "main",
+			Type:    tyInt,
+		},
+	}
+	typ := reflectx.NamedStructOf("main", "Point", fs)
+	if typ.Field(0).Name != "_" {
+		t.Fatalf("field name must underscore")
+	}
+	if typ.Field(1).Name != "_" {
+		t.Fatalf("field name must underscore")
+	}
+}
+
 func TestStructOfExport(t *testing.T) {
 	fs := []reflect.StructField{
 		reflect.StructField{
@@ -285,7 +330,7 @@ func TestNamedTypeStruct(t *testing.T) {
 	}
 }
 
-func TestSetElem(t *testing.T) {
+func _TestSetElem(t *testing.T) {
 	typ := reflectx.NamedTypeOf("main", "T", reflect.TypeOf(([]struct{})(nil)))
 	reflectx.SetElem(typ, typ)
 	v := reflect.MakeSlice(typ, 3, 3)
