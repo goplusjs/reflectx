@@ -66,6 +66,8 @@ func resetTypeList() {
 	typMethodMap = make(map[reflect.Type]bool)
 }
 
+func resetMethodList() {}
+
 func newMethodSet(styp reflect.Type, maxmfunc, maxpfunc int) reflect.Type {
 	rt, _ := newType(styp.PkgPath(), styp.Name(), styp, maxmfunc, 0)
 	setTypeName(rt, styp.PkgPath(), styp.Name())
