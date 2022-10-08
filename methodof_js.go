@@ -10,7 +10,7 @@ import (
 	"strings"
 	"unsafe"
 
-	"github.com/goplusjs/gopherjs/js"
+	"github.com/gopherjs/gopherjs/js"
 )
 
 func New(typ reflect.Type) reflect.Value {
