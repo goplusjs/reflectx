@@ -7,10 +7,7 @@ import (
 	"reflect"
 	"sort"
 	"strings"
-)
-
-var (
-	EnableExportAllMethod = false
+	"unsafe"
 )
 
 // MakeMethod make reflect.Method for MethodOf
@@ -76,10 +73,12 @@ func extraFieldMethod(ifield int, typ reflect.Type, skip map[string]bool) (metho
 }
 
 func parserFuncIO(typ reflect.Type) (in, out []reflect.Type) {
-	for i := 0; i < typ.NumIn(); i++ {
+	numIn := typ.NumIn()
+	numOut := typ.NumOut()
+	for i := 0; i < numIn; i++ {
 		in = append(in, typ.In(i))
 	}
-	for i := 0; i < typ.NumOut(); i++ {
+	for i := 0; i < numOut; i++ {
 		out = append(out, typ.Out(i))
 	}
 	return
@@ -176,28 +175,8 @@ func UpdateField(typ reflect.Type, rmap map[reflect.Type]reflect.Type) bool {
 	return true
 }
 
-// func UpdateMethod(typ reflect.Type, methods []Method, rmap map[reflect.Type]reflect.Type) bool {
-// 	chk := make(map[string]int)
-// 	for _, m := range methods {
-// 		chk[m.Name]++
-// 		if chk[m.Name] > 1 {
-// 			panic(fmt.Sprintf("method redeclared: %v", m.Name))
-// 		}
-// 	}
-// 	if typ.Kind() == reflect.Struct {
-// 		ms := extractEmbedMethod(typ)
-// 		for _, m := range ms {
-// 			if chk[m.Name] == 1 {
-// 				continue
-// 			}
-// 			methods = append(methods, m)
-// 		}
-// 	}
-// 	return updateMethod(typ, methods, rmap)
-// }
-
 func Reset() {
-	resetTypeList()
+	resetMethodList()
 	ntypeMap = make(map[reflect.Type]*Named)
 	embedLookupCache = make(map[reflect.Type]reflect.Type)
 	structLookupCache = make(map[string][]reflect.Type)
@@ -238,31 +217,6 @@ func StructToMethodSet(styp reflect.Type) reflect.Type {
 	return typ
 }
 
-// func MethodOf(styp reflect.Type, methods []Method) reflect.Type {
-// 	chk := make(map[string]int)
-// 	for _, m := range methods {
-// 		chk[m.Name]++
-// 		if chk[m.Name] > 1 {
-// 			panic(fmt.Sprintf("method redeclared: %v", m.Name))
-// 		}
-// 	}
-// 	if styp.Kind() == reflect.Struct {
-// 		ms := extractEmbedMethod(styp)
-// 		for _, m := range ms {
-// 			if chk[m.Name] == 1 {
-// 				continue
-// 			}
-// 			methods = append(methods, m)
-// 		}
-// 	}
-// 	typ := methodSetOf(styp, len(methods), len(methods))
-// 	err := loadMethods(typ, methods)
-// 	if err != nil {
-// 		log.Panicln("error loadMethods", err)
-// 	}
-// 	return typ
-// }
-
 // NewMethodSet is pre define method set of styp
 // maxmfunc - set methodset of T max member func
 // maxpfunc - set methodset of *T + T max member func
@@ -288,17 +242,17 @@ func NewMethodSet(styp reflect.Type, maxmfunc, maxpfunc int) reflect.Type {
 }
 
 func SetMethodSet(styp reflect.Type, methods []Method, extractStructEmbed bool) error {
-	chk := make(map[string]int)
+	chk := make(map[string]Method)
 	for _, m := range methods {
-		chk[m.Name]++
-		if chk[m.Name] > 1 {
+		if v, ok := chk[m.Name]; ok && v.PkgPath == m.PkgPath {
 			return fmt.Errorf("method redeclared: %v", m.Name)
 		}
+		chk[m.Name] = m
 	}
 	if extractStructEmbed && styp.Kind() == reflect.Struct {
 		ms := extractEmbedMethod(styp)
 		for _, m := range ms {
-			if chk[m.Name] == 1 {
+			if _, ok := chk[m.Name]; ok {
 				continue
 			}
 			methods = append(methods, m)
@@ -381,6 +335,9 @@ func SetInterfaceType(typ reflect.Type, embedded []reflect.Type, methods []refle
 	return nil
 }
 
+//go:linkname interequal runtime.interequal
+func interequal(p, q unsafe.Pointer) bool
+
 func InterfaceOf(embedded []reflect.Type, methods []reflect.Method) reflect.Type {
 	for _, e := range embedded {
 		if e.Kind() != reflect.Interface {
@@ -424,6 +381,9 @@ func InterfaceOf(embedded []reflect.Type, methods []reflect.Method) reflect.Type
 		})
 		info = append(info, methodStr(m.Name, m.Type))
 	}
+	if len(st.methods) > 0 {
+		rt.equal = interequal
+	}
 	var str string
 	if len(info) > 0 {
 		str = fmt.Sprintf("*interface { %v }", strings.Join(info, "; "))
@@ -440,9 +400,6 @@ func InterfaceOf(embedded []reflect.Type, methods []reflect.Method) reflect.Type
 }
 
 func methodIsExported(name string) bool {
-	if EnableExportAllMethod {
-		return true
-	}
 	return token.IsExported(name)
 }
 
@@ -503,7 +460,9 @@ func replaceType(typ reflect.Type, rmap map[reflect.Type]reflect.Type) reflect.T
 func parserMethodType(mtyp reflect.Type, rmap map[reflect.Type]reflect.Type) (in, out []reflect.Type, ntyp, inTyp, outTyp reflect.Type) {
 	var inFields []reflect.StructField
 	var outFields []reflect.StructField
-	for i := 0; i < mtyp.NumIn(); i++ {
+	numIn := mtyp.NumIn()
+	numOut := mtyp.NumOut()
+	for i := 0; i < numIn; i++ {
 		t := mtyp.In(i)
 		if rmap != nil {
 			t = replaceType(t, rmap)
@@ -514,7 +473,7 @@ func parserMethodType(mtyp reflect.Type, rmap map[reflect.Type]reflect.Type) (in
 			Type: t,
 		})
 	}
-	for i := 0; i < mtyp.NumOut(); i++ {
+	for i := 0; i < numOut; i++ {
 		t := mtyp.Out(i)
 		if rmap != nil {
 			t = replaceType(t, rmap)

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"unsafe"
 
-	"github.com/goplusjs/gopherjs/js"
+	"github.com/gopherjs/gopherjs/js"
 )
 
 func New(typ reflect.Type) reflect.Value {
@@ -65,6 +65,8 @@ var (
 func resetTypeList() {
 	typMethodMap = make(map[reflect.Type]bool)
 }
+
+func resetMethodList() {}
 
 func newMethodSet(styp reflect.Type, maxmfunc, maxpfunc int) reflect.Type {
 	rt, _ := newType(styp.PkgPath(), styp.Name(), styp, maxmfunc, 0)

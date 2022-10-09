@@ -21,6 +21,12 @@ import (
 	"unsafe"
 )
 
+//go:linkname haveIdenticalUnderlyingType reflect.haveIdenticalUnderlyingType
+func haveIdenticalUnderlyingType(T, V *rtype, cmpTags bool) bool
+
+//go:linkname haveIdenticalType reflect.haveIdenticalType
+func haveIdenticalType(T, V reflect.Type, cmpTags bool) bool
+
 // memmove copies size bytes to dst from src. No write barriers are used.
 //go:noescape
 //go:linkname memmove reflect.memmove
@@ -66,27 +72,16 @@ func resolveReflectName(n name) nameOff
 //go:linkname toType reflect.toType
 func toType(t *rtype) reflect.Type
 
-//go:linkname _nameOff reflect.(*rtype).nameOff
-func _nameOff(t *rtype, off nameOff) name
-
-//go:linkname _typeOff reflect.(*rtype).typeOff
-func _typeOff(t *rtype, off typeOff) *rtype
-
-//go:linkname _textOff reflect.(*rtype).textOff
-func _textOff(t *rtype, off textOff) unsafe.Pointer
-
 func (t *rtype) nameOff(off nameOff) name {
-	return _nameOff(t, off)
+	return name{(*byte)(resolveNameOff(unsafe.Pointer(t), int32(off)))}
 }
 
 func (t *rtype) typeOff(off typeOff) *rtype {
-	return _typeOff(t, off)
-	//return (*rtype)(resolveTypeOff(unsafe.Pointer(t), int32(off)))
+	return (*rtype)(resolveTypeOff(unsafe.Pointer(t), int32(off)))
 }
 
 func (t *rtype) textOff(off textOff) unsafe.Pointer {
-	return _textOff(t, off)
-	//return resolveTextOff(unsafe.Pointer(t), int32(off))
+	return resolveTextOff(unsafe.Pointer(t), int32(off))
 }
 
 // resolveReflectType adds a *rtype to the reflection lookup map in the runtime.
@@ -147,6 +142,9 @@ const (
 	// tflagRegularMemory means that equal and hash functions can treat
 	// this type as a single region of t.size bytes.
 	tflagRegularMemory tflag = 1 << 3
+
+	// tflagUserMethod means the type has reflctx user methods
+	tflagUserMethod tflag = 1 << 7
 )
 
 type rtype struct {
@@ -255,24 +253,60 @@ type sliceType struct {
 	elem *rtype // slice element type
 }
 
-// struct field
-type structField struct {
-	name        name    // name is always non-empty
-	typ         *rtype  // type of field
-	offsetEmbed uintptr // byte offset of field<<1 | isEmbedded
-}
-
-func (f *structField) offset() uintptr {
-	return f.offsetEmbed >> 1
-}
-
-func (f *structField) embedded() bool {
-	return f.offsetEmbed&1 != 0
-}
-
 // structType represents a struct type.
 type structType struct {
 	rtype
 	pkgPath name
 	fields  []structField // sorted by offset
+}
+
+// go/src/cmd/compile/internal/gc/alg.go#algtype1
+// IsRegularMemory reports whether t can be compared/hashed as regular memory.
+func isRegularMemory(t reflect.Type) bool {
+	switch t.Kind() {
+	case reflect.Func, reflect.Map, reflect.Slice, reflect.String, reflect.Interface:
+		return false
+	case reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128:
+		return false
+	case reflect.Array:
+		b := isRegularMemory(t.Elem())
+		if b {
+			return true
+		}
+		if t.Len() == 0 {
+			return true
+		}
+		return b
+	case reflect.Struct:
+		n := t.NumField()
+		switch n {
+		case 0:
+			return true
+		case 1:
+			f := t.Field(0)
+			if f.Name == "_" {
+				return false
+			}
+			return isRegularMemory(f.Type)
+		default:
+			for i := 0; i < n; i++ {
+				f := t.Field(i)
+				if f.Name == "_" || !isRegularMemory(f.Type) || ispaddedfield(t, i) {
+					return false
+				}
+			}
+		}
+	}
+	return true
+}
+
+// ispaddedfield reports whether the i'th field of struct type t is followed
+// by padding.
+func ispaddedfield(t reflect.Type, i int) bool {
+	end := t.Size()
+	if i+1 < t.NumField() {
+		end = t.Field(i + 1).Offset
+	}
+	fd := t.Field(i)
+	return fd.Offset+fd.Type.Size() != end
 }

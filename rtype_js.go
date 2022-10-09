@@ -7,7 +7,7 @@ import (
 	"reflect"
 	"unsafe"
 
-	"github.com/goplusjs/gopherjs/js"
+	"github.com/gopherjs/gopherjs/js"
 )
 
 //go:linkname reflectType reflect.reflectType

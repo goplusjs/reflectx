@@ -18,6 +18,10 @@ func toKindType(t *rtype) unsafe.Pointer {
 	return unsafe.Pointer(t)
 }
 
+//go:linkname toUncommonType reflect.(*rtype).uncommon
+func toUncommonType(t *rtype) *uncommonType
+
+/*
 func toUncommonType(t *rtype) *uncommonType {
 	if t.tflag&tflagUncommon == 0 {
 		return nil
@@ -75,6 +79,7 @@ func toUncommonType(t *rtype) *uncommonType {
 		return &(*u)(unsafe.Pointer(t)).u
 	}
 }
+*/
 
 // uncommonType is present only for defined types or types with methods
 // (if T is a defined type, the uncommonTypes for T and *T have methods).
@@ -208,13 +213,13 @@ func (t *rtype) IsVariadic() bool {
 // 	return name{(*byte)(resolveNameOff(unsafe.Pointer(t), int32(off)))}
 // }
 
-type makeFuncImpl struct {
-	code   uintptr
-	stack  *bitVector // ptrmap for both args and results
-	argLen uintptr    // just args
-	ftyp   *funcType
-	fn     func([]reflect.Value) []reflect.Value
-}
+// type makeFuncImpl struct {
+// 	code   uintptr
+// 	stack  *bitVector // ptrmap for both args and results
+// 	argLen uintptr    // just args
+// 	ftyp   *funcType
+// 	fn     func([]reflect.Value) []reflect.Value
+// }
 
 type bitVector struct {
 	n    uint32 // number of bits
@@ -238,10 +243,15 @@ type funcType struct {
 	outCount uint16 // top bit is set if last input parameter is ...
 }
 
-type offFuncType struct {
+type uncommonFuncType struct {
 	funcType
 	uncommonType
-	args [128]*rtype
+	args [1]*rtype
+}
+
+func uncommonFuncTypeArgs(rt *rtype, nargs int) []*rtype {
+	f := (*uncommonFuncType)(unsafe.Pointer(rt))
+	return (*[1 << 16]*rtype)(unsafe.Pointer(&f.args))[:nargs:nargs]
 }
 
 func SetUnderlying(typ reflect.Type, styp reflect.Type) {
@@ -291,19 +301,17 @@ func SetUnderlying(typ reflect.Type, styp reflect.Type) {
 		ost := (*funcType)(unsafe.Pointer(ort))
 		st.inCount = ost.inCount
 		st.outCount = ost.outCount
-		narg := ost.inCount + ost.outCount
+		numIn := typ.NumIn()
+		numOut := typ.NumOut()
+		narg := numIn + numOut
 		if narg > 0 {
-			args := make([]*rtype, narg, narg)
-			for i := 0; i < styp.NumIn(); i++ {
+			args := uncommonFuncTypeArgs(rt, narg)
+			var i int
+			for i = 0; i < numIn; i++ {
 				args[i] = totype(styp.In(i))
 			}
-			index := styp.NumIn()
-			for i := 0; i < styp.NumOut(); i++ {
-				args[index+i] = totype(styp.Out(i))
-			}
-			dst := (*offFuncType)(unsafe.Pointer(rt))
-			for i, a := range args {
-				dst.args[i] = a
+			for j := 0; j < numOut; j++ {
+				args[i+j] = totype(styp.Out(j))
 			}
 		}
 	}
@@ -388,7 +396,9 @@ func newType(pkg string, name string, styp reflect.Type, mcount int, xcount int)
 		st.elem = ost.elem
 		st.dir = ost.dir
 	case reflect.Func:
-		narg := styp.NumIn() + styp.NumOut()
+		numIn := styp.NumIn()
+		numOut := styp.NumOut()
+		narg := numIn + numOut
 		tt = reflect.New(reflect.StructOf([]reflect.StructField{
 			{Name: "S", Type: reflect.TypeOf(funcType{})},
 			{Name: "U", Type: reflect.TypeOf(uncommonType{})},
@@ -402,12 +412,12 @@ func newType(pkg string, name string, styp reflect.Type, mcount int, xcount int)
 		if narg > 0 {
 			args := make([]*rtype, narg, narg)
 			fnoff = uint32(unsafe.Sizeof((*rtype)(nil))) * uint32(narg)
-			for i := 0; i < styp.NumIn(); i++ {
+			var i int
+			for i = 0; i < numIn; i++ {
 				args[i] = totype(styp.In(i))
 			}
-			index := styp.NumIn()
-			for i := 0; i < styp.NumOut(); i++ {
-				args[index+i] = totype(styp.Out(i))
+			for j := 0; j < numOut; j++ {
+				args[i+j] = totype(styp.Out(j))
 			}
 			copy(tt.Elem().Field(2).Slice(0, narg).Interface().([]*rtype), args)
 		}
@@ -474,9 +484,6 @@ func typelinks() (sections []unsafe.Pointer, offset [][]int32)
 //go:linkname rtypeOff reflect.rtypeOff
 func rtypeOff(section unsafe.Pointer, off int32) *rtype
 
-//go:linkname haveIdenticalUnderlyingType reflect.haveIdenticalUnderlyingType
-func haveIdenticalUnderlyingType(T, V *rtype, cmpTags bool) bool
-
 func TypeLinks() []reflect.Type {
 	var r []reflect.Type
 	sections, offset := typelinks()
@@ -538,94 +545,17 @@ func DumpType(w io.Writer, typ reflect.Type) {
 	}
 }
 
-// func Implements(T reflect.Type, U reflect.Type) bool {
-// 	return implements(totype(T), totype(U))
-// }
+func NumMethodX(typ reflect.Type) int {
+	return totype(typ).NumMethodX()
+}
 
-// // implements reports whether the type V implements the interface type T.
-// func implements(T, V *_rtype) bool {
-// 	if T.Kind() != reflect.Interface {
-// 		return false
-// 	}
-// 	t := (*interfaceType)(unsafe.Pointer(T))
-// 	if len(t.methods) == 0 {
-// 		return true
-// 	}
+func MethodX(typ reflect.Type, i int) reflect.Method {
+	return totype(typ).MethodX(i)
+}
 
-// 	// The same algorithm applies in both cases, but the
-// 	// method tables for an interface type and a concrete type
-// 	// are different, so the code is duplicated.
-// 	// In both cases the algorithm is a linear scan over the two
-// 	// lists - T's methods and V's methods - simultaneously.
-// 	// Since method tables are stored in a unique sorted order
-// 	// (alphabetical, with no duplicate method names), the scan
-// 	// through V's methods must hit a match for each of T's
-// 	// methods along the way, or else V does not implement T.
-// 	// This lets us run the scan in overall linear time instead of
-// 	// the quadratic time  a naive search would require.
-// 	// See also ../runtime/iface.go.
-// 	if V.Kind() == reflect.Interface {
-// 		v := (*interfaceType)(unsafe.Pointer(V))
-// 		i := 0
-// 		for j := 0; j < len(v.methods); j++ {
-// 			tm := &t.methods[i]
-// 			tmName := t.nameOff(tm.name)
-// 			vm := &v.methods[j]
-// 			vmName := V.nameOff(vm.name)
-// 			if vmName.name() == tmName.name() && V.typeOff(vm.typ) == t.typeOff(tm.typ) {
-// 				if !tmName.isExported() {
-// 					tmPkgPath := tmName.pkgPath()
-// 					if tmPkgPath == "" {
-// 						tmPkgPath = t.pkgPath.name()
-// 					}
-// 					vmPkgPath := vmName.pkgPath()
-// 					if vmPkgPath == "" {
-// 						vmPkgPath = v.pkgPath.name()
-// 					}
-// 					if tmPkgPath != vmPkgPath {
-// 						continue
-// 					}
-// 				}
-// 				if i++; i >= len(t.methods) {
-// 					return true
-// 				}
-// 			}
-// 		}
-// 		return false
-// 	}
-
-// 	v := V.uncommon()
-// 	if v == nil {
-// 		return false
-// 	}
-// 	i := 0
-// 	vmethods := v.methods()
-// 	for j := 0; j < int(v.mcount); j++ {
-// 		tm := &t.methods[i]
-// 		tmName := t.nameOff(tm.name)
-// 		vm := vmethods[j]
-// 		vmName := V.nameOff(vm.name)
-// 		if vmName.name() == tmName.name() && V.typeOff(vm.mtyp) == t.typeOff(tm.typ) {
-// 			if !tmName.isExported() {
-// 				tmPkgPath := tmName.pkgPath()
-// 				if tmPkgPath == "" {
-// 					tmPkgPath = t.pkgPath.name()
-// 				}
-// 				vmPkgPath := vmName.pkgPath()
-// 				if vmPkgPath == "" {
-// 					vmPkgPath = V.nameOff(v.pkgPath).name()
-// 				}
-// 				if tmPkgPath != vmPkgPath {
-// 					continue
-// 				}
-// 			}
-// 			if i++; i >= len(t.methods) {
-// 				return true
-// 			}
-// 		}
-// 	}
-// 	return false
-// }
+func (t *rtype) NumMethodX() int {
+	return len(t.methods())
+}
 
 func (t *rtype) MethodX(i int) (m reflect.Method) {
 	if t.Kind() == reflect.Interface {
@@ -640,6 +570,9 @@ func (t *rtype) MethodX(i int) (m reflect.Method) {
 	m.Name = pname.name()
 	m.Index = i
 	fl := flag(reflect.Func)
+	if t.tflag&tflagUserMethod != 0 {
+		fl |= flagIndir
+	}
 	mtyp := t.typeOff(p.mtyp)
 	if mtyp == nil {
 		return
@@ -666,28 +599,14 @@ func (t *rtype) MethodByNameX(name string) (m reflect.Method, ok bool) {
 	if t.Kind() == reflect.Interface {
 		return toType(t).MethodByName(name)
 	}
-	ut := t.uncommon()
-	if ut == nil {
-		return reflect.Method{}, false
-	}
-	for i, p := range ut.methods() {
-		if t.nameOff(p.name).name() == name {
-			return t.MethodX(i), true
+	if ut := t.uncommon(); ut != nil {
+		for i, p := range ut.methods() {
+			if t.nameOff(p.name).name() == name {
+				return t.MethodX(i), true
+			}
 		}
 	}
 	return reflect.Method{}, false
-}
-
-func NumMethodX(typ reflect.Type) int {
-	return len(totype(typ).methods())
-}
-
-func MethodX(typ reflect.Type, i int) reflect.Method {
-	return totype(typ).MethodX(i)
-}
-
-func MethodByNameX(typ reflect.Type, name string) (m reflect.Method, ok bool) {
-	return totype(typ).MethodByNameX(name)
 }
 
 // Field returns the i'th field of the struct v.
@@ -695,7 +614,7 @@ func MethodByNameX(typ reflect.Type, name string) (m reflect.Method, ok bool) {
 func FieldX(v reflect.Value, i int) reflect.Value {
 	mustBe("reflect.Value.Field", v, reflect.Struct)
 	rv := tovalue(&v)
-	tt := toStructType(rv.typ)
+	tt := (*structType)(unsafe.Pointer(rv.typ))
 	if uint(i) >= uint(len(tt.fields)) {
 		panic("reflect: Field index out of range")
 	}

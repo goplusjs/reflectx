@@ -142,10 +142,6 @@ func isExported(name string) bool {
 }
 
 var (
-	EnableStructOfExportAllField bool
-)
-
-var (
 	structLookupCache = make(map[string][]reflect.Type)
 )
 
@@ -168,9 +164,6 @@ func checkFields(t1, t2 reflect.Type) bool {
 	}
 	return true
 }
-
-//go:linkname haveIdenticalType reflect.haveIdenticalType
-func haveIdenticalType(T, V reflect.Type, cmpTags bool) bool
 
 func StructOf(fields []reflect.StructField) reflect.Type {
 	var anonymous []int
@@ -198,16 +191,10 @@ func StructOf(fields []reflect.StructField) reflect.Type {
 	rt := totype(typ)
 	st := toStructType(rt)
 	for _, i := range anonymous {
-		st.fields[i].offsetEmbed |= 1
+		setEmbedded(&st.fields[i])
 	}
 	for i, n := range underscore {
 		st.fields[i].name = n
-	}
-	if EnableStructOfExportAllField {
-		for i := 0; i < len(fs); i++ {
-			f := fs[i]
-			st.fields[i].name = newName(f.Name, string(f.Tag), true)
-		}
 	}
 	str := typ.String()
 	if ts, ok := structLookupCache[str]; ok {
@@ -220,7 +207,23 @@ func StructOf(fields []reflect.StructField) reflect.Type {
 	} else {
 		structLookupCache[str] = []reflect.Type{typ}
 	}
-	if isRegularMemory(typ) {
+	if underscoreCount > 0 {
+		// fix equal for blank fields
+		rt.equal = func(p, q unsafe.Pointer) bool {
+			for i, ft := range st.fields {
+				if fields[i].Name == "_" {
+					continue
+				}
+				pi := add(p, ft.offset(), "&x.field safe")
+				qi := add(q, ft.offset(), "&x.field safe")
+				if !ft.typ.equal(pi, qi) {
+					return false
+				}
+			}
+			return true
+		}
+	}
+	if rt.tflag == 0 && isRegularMemory(typ) {
 		rt.tflag |= tflagRegularMemory
 	}
 	return typ
@@ -462,55 +465,4 @@ func (ctx *replaceTypeContext) replace(pkg string, typ reflect.Type, m map[strin
 		}
 	}
 	return nil, false
-}
-
-// go/src/cmd/compile/internal/gc/alg.go#algtype1
-// IsRegularMemory reports whether t can be compared/hashed as regular memory.
-func isRegularMemory(t reflect.Type) bool {
-	switch t.Kind() {
-	case reflect.Func, reflect.Map, reflect.Slice, reflect.String, reflect.Interface:
-		return false
-	case reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128:
-		return false
-	case reflect.Array:
-		b := isRegularMemory(t.Elem())
-		if b {
-			return true
-		}
-		if t.Len() == 0 {
-			return true
-		}
-		return b
-	case reflect.Struct:
-		n := t.NumField()
-		switch n {
-		case 0:
-			return true
-		case 1:
-			f := t.Field(0)
-			if f.Name == "_" {
-				return false
-			}
-			return isRegularMemory(f.Type)
-		default:
-			for i := 0; i < n; i++ {
-				f := t.Field(i)
-				if f.Name == "_" || !isRegularMemory(f.Type) || ispaddedfield(t, i) {
-					return false
-				}
-			}
-		}
-	}
-	return true
-}
-
-// ispaddedfield reports whether the i'th field of struct type t is followed
-// by padding.
-func ispaddedfield(t reflect.Type, i int) bool {
-	end := t.Size()
-	if i+1 < t.NumField() {
-		end = t.Field(i + 1).Offset
-	}
-	fd := t.Field(i)
-	return fd.Offset+fd.Type.Size() != end
 }

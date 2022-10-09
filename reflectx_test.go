@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"reflect"
+	"runtime"
 	"testing"
 	"unsafe"
 
@@ -281,7 +282,7 @@ var testInterfaceType = []reflect.Type{
 }
 
 func TestNamedInterface(t *testing.T) {
-	pkgpath := reflect.TypeOf((*interface{})(nil)).Elem().PkgPath()
+	pkgpath := "main"
 	for i, styp := range testInterfaceType {
 		name := fmt.Sprintf("T%v", i)
 		typ := reflectx.NamedTypeOf(pkgpath, name, styp)
@@ -330,7 +331,10 @@ func TestNamedTypeStruct(t *testing.T) {
 	}
 }
 
-func _TestSetElem(t *testing.T) {
+func TestSetElem(t *testing.T) {
+	if runtime.Compiler == "gopherjs" {
+		t.Skip("skip gopherjs")
+	}
 	typ := reflectx.NamedTypeOf("main", "T", reflect.TypeOf(([]struct{})(nil)))
 	reflectx.SetElem(typ, typ)
 	v := reflect.MakeSlice(typ, 3, 3)
@@ -339,5 +343,43 @@ func _TestSetElem(t *testing.T) {
 	s := fmt.Sprintf("%v", v.Interface())
 	if s != "[[[]] [[] []] []]" {
 		t.Fatalf("failed SetElem s=%v", s)
+	}
+}
+
+func TestNamedStructComparable(t *testing.T) {
+	if runtime.Compiler == "gopherjs" {
+		t.Skip("skip gopherjs")
+	}
+	fs := []reflect.StructField{
+		reflect.StructField{Name: "_", PkgPath: "main", Type: reflect.TypeOf(0)},
+		reflect.StructField{Name: "x", PkgPath: "main", Type: reflect.TypeOf(0)},
+	}
+	typ := reflectx.NamedStructOf("main", "blankStruct", fs)
+	v1 := reflect.New(typ).Elem()
+	reflectx.Field(v1, 0).SetInt(100)
+	reflectx.Field(v1, 1).SetInt(200)
+	v2 := reflect.New(typ).Elem()
+	reflectx.Field(v2, 0).SetInt(-100)
+	reflectx.Field(v2, 1).SetInt(200)
+	if v1.Interface() != v2.Interface() {
+		t.Fatal("failed struct equal")
+	}
+}
+
+func TestNamedStructUncomparable(t *testing.T) {
+	fs := []reflect.StructField{
+		reflect.StructField{Name: "_", PkgPath: "main", Type: reflect.TypeOf(0)},
+		reflect.StructField{Name: "fn", PkgPath: "main", Type: reflect.TypeOf(func() {})},
+	}
+	typ := reflectx.NamedStructOf("main", "funcStruct", fs)
+	v1 := reflect.New(typ).Elem()
+	v2 := reflect.New(typ).Elem()
+	defer func() {
+		if err := recover(); err == nil {
+			t.Fatal("must panic comparing uncomparable type")
+		}
+	}()
+	if v1.Interface() == v2.Interface() {
+		t.Fatal("must panic")
 	}
 }
